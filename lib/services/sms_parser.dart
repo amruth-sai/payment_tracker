@@ -90,8 +90,9 @@ class SmsParser {
       if (match != null) {
         final str = match.group(1)!.replaceAll(',', '');
         final val = double.tryParse(str);
-        if (val != null && val > 0 && val < 10000000)
+        if (val != null && val > 0 && val < 10000000) {
           return val; // sanity: < 1 crore
+        }
       }
     }
     return null;

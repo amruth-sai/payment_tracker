@@ -329,7 +329,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<AccountType>(
-              value: _selectedType,
+              initialValue: _selectedType,
               decoration: const InputDecoration(labelText: 'Account Type'),
               items: AccountType.values.map((type) {
                 return DropdownMenuItem(
