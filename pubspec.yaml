@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.2
-  telephony: ^0.2.0          # SMS reading on Android
+  another_telephony: ^0.3.0     # Maintained fork of telephony for SMS reading
   permission_handler: ^11.3.0 # Runtime permissions
   intl: ^0.19.0               # Date/number formatting
   fl_chart: ^0.68.0           # Charts for spending overview

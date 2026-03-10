@@ -2,6 +2,12 @@
   "configVersion": 2,
   "packages": [
     {
+      "name": "another_telephony",
+      "rootUri": "file:///C:/Users/Amruth%20Sai%20Poreddy/AppData/Local/Pub/Cache/hosted/pub.dev/another_telephony-0.3.0",
+      "packageUri": "lib/",
+      "languageVersion": "2.15"
+    },
+    {
       "name": "async",
       "rootUri": "file:///C:/Users/Amruth%20Sai%20Poreddy/AppData/Local/Pub/Cache/hosted/pub.dev/async-2.13.0",
       "packageUri": "lib/",
@@ -288,12 +294,6 @@
       "rootUri": "file:///C:/Users/Amruth%20Sai%20Poreddy/AppData/Local/Pub/Cache/hosted/pub.dev/string_scanner-1.4.1",
       "packageUri": "lib/",
       "languageVersion": "3.1"
-    },
-    {
-      "name": "telephony",
-      "rootUri": "file:///C:/Users/Amruth%20Sai%20Poreddy/AppData/Local/Pub/Cache/hosted/pub.dev/telephony-0.2.0",
-      "packageUri": "lib/",
-      "languageVersion": "2.15"
     },
     {
       "name": "term_glyph",

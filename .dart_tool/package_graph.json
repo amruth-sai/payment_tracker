@@ -7,13 +7,13 @@
       "name": "payment_tracker",
       "version": "1.0.0+1",
       "dependencies": [
+        "another_telephony",
         "fl_chart",
         "flutter",
         "intl",
         "permission_handler",
         "provider",
-        "shared_preferences",
-        "telephony"
+        "shared_preferences"
       ],
       "devDependencies": [
         "flutter_lints",
@@ -89,8 +89,8 @@
       ]
     },
     {
-      "name": "telephony",
-      "version": "0.2.0",
+      "name": "another_telephony",
+      "version": "0.3.0",
       "dependencies": [
         "flutter",
         "platform"

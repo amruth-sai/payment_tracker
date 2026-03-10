@@ -1,7 +1,7 @@
 // lib/services/sms_service.dart
 
 import 'package:flutter/foundation.dart';
-import 'package:telephony/telephony.dart';
+import 'package:another_telephony/telephony.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/transaction.dart';
 import 'sms_parser.dart';
