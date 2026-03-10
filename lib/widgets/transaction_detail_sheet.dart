@@ -132,6 +132,93 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           ),
           const SizedBox(height: 16),
 
+          // Category badge
+          if (_tx.category != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_tx.category!.emoji,
+                            style: const TextStyle(fontSize: 16)),
+                        const SizedBox(width: 6),
+                        Text(
+                          _tx.category!.displayName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color:
+                                theme.colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+
+          // Personal Note
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: InkWell(
+              onTap: _showNoteEditor,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _tx.note != null && _tx.note!.isNotEmpty
+                          ? Icons.sticky_note_2
+                          : Icons.note_add_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _tx.note != null && _tx.note!.isNotEmpty
+                            ? _tx.note!
+                            : 'Add a personal note...',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle:
+                              _tx.note == null || _tx.note!.isEmpty
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
+                          color: _tx.note != null && _tx.note!.isNotEmpty
+                              ? theme.colorScheme.onSurface
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.edit, size: 14, color: Colors.grey[400]),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
           // Details
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -258,6 +345,43 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
         ),
       );
     }
+  }
+
+  void _showNoteEditor() {
+    final controller = TextEditingController(text: _tx.note ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Personal Note'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'e.g. Birthday dinner, Office supplies...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final note = controller.text.trim();
+              await LocalStorageService.updateTransactionNote(
+                  _tx.id, note.isEmpty ? null : note);
+              final updated = _tx.copyWith(note: note.isEmpty ? null : note);
+              setState(() => _tx = updated);
+              widget.onTransactionUpdated?.call(updated);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

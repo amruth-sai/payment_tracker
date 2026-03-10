@@ -4,6 +4,94 @@ enum TransactionType { credit, debit, unknown }
 
 enum PaymentSource { upi, bank, card, wallet, unknown }
 
+enum TransactionCategory {
+  foodDining,
+  travelTransport,
+  shopping,
+  rentHousing,
+  emiLoans,
+  entertainment,
+  billsUtilities,
+  healthMedical,
+  education,
+  salaryIncome,
+  transfer,
+  cashback,
+  investment,
+  other,
+  uncategorized;
+
+  String get displayName {
+    switch (this) {
+      case foodDining:
+        return 'Food & Dining';
+      case travelTransport:
+        return 'Travel & Transport';
+      case shopping:
+        return 'Shopping';
+      case rentHousing:
+        return 'Rent & Housing';
+      case emiLoans:
+        return 'EMI & Loans';
+      case entertainment:
+        return 'Entertainment';
+      case billsUtilities:
+        return 'Bills & Utilities';
+      case healthMedical:
+        return 'Health & Medical';
+      case education:
+        return 'Education';
+      case salaryIncome:
+        return 'Salary & Income';
+      case transfer:
+        return 'Transfer';
+      case cashback:
+        return 'Cashback';
+      case investment:
+        return 'Investment';
+      case other:
+        return 'Other';
+      case uncategorized:
+        return 'Uncategorized';
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case foodDining:
+        return '🍕';
+      case travelTransport:
+        return '🚗';
+      case shopping:
+        return '🛍️';
+      case rentHousing:
+        return '🏠';
+      case emiLoans:
+        return '💳';
+      case entertainment:
+        return '🎬';
+      case billsUtilities:
+        return '💡';
+      case healthMedical:
+        return '🏥';
+      case education:
+        return '📚';
+      case salaryIncome:
+        return '💰';
+      case transfer:
+        return '🔄';
+      case cashback:
+        return '🎁';
+      case investment:
+        return '📈';
+      case other:
+        return '📌';
+      case uncategorized:
+        return '❓';
+    }
+  }
+}
+
 class Transaction {
   final String id;
   final double amount;
@@ -19,6 +107,8 @@ class Transaction {
   final String? accountId; // Link to Account
   final bool isUserCorrected; // User manually corrected this transaction
   final bool isSalary; // Marked as salary by user
+  final TransactionCategory? category; // Auto or manually tagged category
+  final String? note; // User-added personal note
 
   Transaction({
     required this.id,
@@ -35,6 +125,8 @@ class Transaction {
     this.accountId,
     this.isUserCorrected = false,
     this.isSalary = false,
+    this.category,
+    this.note,
   });
 
   bool get isCredit => type == TransactionType.credit;
@@ -74,6 +166,8 @@ class Transaction {
     String? accountId,
     bool? isUserCorrected,
     bool? isSalary,
+    TransactionCategory? category,
+    String? note,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -90,6 +184,8 @@ class Transaction {
       accountId: accountId ?? this.accountId,
       isUserCorrected: isUserCorrected ?? this.isUserCorrected,
       isSalary: isSalary ?? this.isSalary,
+      category: category ?? this.category,
+      note: note ?? this.note,
     );
   }
 }

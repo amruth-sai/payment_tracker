@@ -7,6 +7,7 @@ import '../models/transaction.dart';
 import 'sms_parser.dart';
 import 'ai_sms_parser.dart';
 import 'local_storage_service.dart';
+import 'category_service.dart';
 
 class SmsService extends ChangeNotifier {
   final Telephony _telephony = Telephony.instance;
@@ -187,9 +188,12 @@ class SmsService extends ChangeNotifier {
         }
 
         if (tx != null) {
-          newTransactions.add(tx);
+          // Auto-categorize the transaction
+          final category = CategoryService.categorize(tx);
+          final categorizedTx = tx.copyWith(category: category);
+          newTransactions.add(categorizedTx);
           // Save transaction to cache
-          await LocalStorageService.saveTransaction(tx, parsedBy: parsedBy);
+          await LocalStorageService.saveTransaction(categorizedTx, parsedBy: parsedBy);
           await LocalStorageService.markSmsAsProcessed(id, isTransaction: true);
         } else {
           // Mark as processed but not a transaction

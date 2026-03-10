@@ -13,6 +13,13 @@ import 'settings_screen.dart';
 import 'accounts_screen.dart';
 import 'spending_breakdown_screen.dart';
 import 'salary_cycle_screen.dart';
+import 'category_breakdown_screen.dart';
+import 'budget_screen.dart';
+import 'spending_heatmap_screen.dart';
+import 'merchant_rankings_screen.dart';
+import 'emi_tracker_screen.dart';
+import 'alerts_screen.dart';
+import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +31,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedFilter = 0; // 0=All, 1=In, 2=Out
   final _filters = ['All', 'Money In', 'Money Out'];
+  int _unreadAlertCount = 0;
 
   @override
   void initState() {
@@ -32,7 +40,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final sms = context.read<SmsService>();
       await sms.initializeAI(); // Load AI if API key exists
       sms.loadTransactions();
+      _loadAlertCount();
     });
+  }
+
+  Future<void> _loadAlertCount() async {
+    final unread = await LocalStorageService.getUnreadAlerts();
+    if (mounted) {
+      setState(() => _unreadAlertCount = unread.length);
+    }
   }
 
   @override
@@ -182,6 +198,40 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.refresh_rounded),
           onPressed: () => context.read<SmsService>().loadTransactions(),
         ),
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AlertsScreen()),
+                );
+                _loadAlertCount();
+              },
+            ),
+            if (_unreadAlertCount > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    _unreadAlertCount > 9 ? '9+' : '$_unreadAlertCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
         IconButton(
           icon: const Icon(Icons.settings_outlined),
           onPressed: () async {
@@ -203,38 +253,144 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildQuickActions() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+      child: Column(
         children: [
-          _QuickActionButton(
-            icon: Icons.account_balance_wallet,
-            label: 'Accounts',
-            color: Colors.blue,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AccountsScreen()),
-            ),
+          // Row 1 - Original buttons
+          Row(
+            children: [
+              _QuickActionButton(
+                icon: Icons.account_balance_wallet,
+                label: 'Accounts',
+                color: Colors.blue,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AccountsScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.pie_chart,
+                label: 'Breakdown',
+                color: Colors.purple,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const SpendingBreakdownScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.calendar_month,
+                label: 'Salary',
+                color: Colors.green,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SalaryCycleScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.category,
+                label: 'Categories',
+                color: Colors.teal,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const CategoryBreakdownScreen()),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          _QuickActionButton(
-            icon: Icons.pie_chart,
-            label: 'Breakdown',
-            color: Colors.purple,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const SpendingBreakdownScreen()),
-            ),
+          const SizedBox(height: 8),
+          // Row 2 - New feature buttons
+          Row(
+            children: [
+              _QuickActionButton(
+                icon: Icons.savings,
+                label: 'Budgets',
+                color: Colors.orange,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BudgetScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.grid_on,
+                label: 'Heatmap',
+                color: Colors.red,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const SpendingHeatmapScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.bar_chart,
+                label: 'Merchants',
+                color: Colors.indigo,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const MerchantRankingsScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.event_repeat,
+                label: 'EMIs',
+                color: Colors.amber,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const EMITrackerScreen()),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          _QuickActionButton(
-            icon: Icons.calendar_month,
-            label: 'Salary Cycles',
-            color: Colors.green,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SalaryCycleScreen()),
+          // Alerts banner
+          if (_unreadAlertCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: InkWell(
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AlertsScreen()),
+                  );
+                  _loadAlertCount();
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border:
+                        Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.notifications_active,
+                          color: Colors.orange, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$_unreadAlertCount unread alert${_unreadAlertCount > 1 ? 's' : ''}',
+                        style: const TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13),
+                      ),
+                      const Spacer(),
+                      const Icon(Icons.arrow_forward_ios,
+                          size: 14, color: Colors.orange),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );

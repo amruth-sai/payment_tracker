@@ -5,13 +5,15 @@ import 'package:path/path.dart';
 import '../models/transaction.dart';
 import '../models/account.dart';
 import '../models/salary_cycle.dart';
+import '../models/budget.dart';
+import '../models/app_alert.dart';
 
 /// Local SQLite database for caching parsed transactions
 /// Avoids re-parsing already processed SMS messages
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 2; // Upgraded for new tables
+  static const int _dbVersion = 3; // v3: categories, notes, budgets, alerts, EMIs
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -52,6 +54,8 @@ class LocalStorageService {
         account_id TEXT,
         is_user_corrected INTEGER DEFAULT 0,
         is_salary INTEGER DEFAULT 0,
+        category TEXT,
+        note TEXT,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -100,6 +104,45 @@ class LocalStorageService {
       )
     ''');
 
+    // Table for budgets
+    await db.execute('''
+      CREATE TABLE budgets (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        monthly_limit REAL NOT NULL,
+        is_ai_suggested INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    // Table for alerts
+    await db.execute('''
+      CREATE TABLE alerts (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        transaction_id TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    // Table for detected EMIs
+    await db.execute('''
+      CREATE TABLE emis (
+        id TEXT PRIMARY KEY,
+        merchant TEXT NOT NULL,
+        amount REAL NOT NULL,
+        day_of_month INTEGER NOT NULL,
+        occurrences TEXT,
+        total_detected INTEGER NOT NULL,
+        estimated_total INTEGER,
+        is_active INTEGER DEFAULT 1
+      )
+    ''');
+
     // Indexes for faster lookups
     await db.execute(
         'CREATE INDEX idx_transactions_date ON transactions(date DESC)');
@@ -109,6 +152,10 @@ class LocalStorageService {
         'CREATE INDEX idx_transactions_account ON transactions(account_id)');
     await db.execute(
         'CREATE INDEX idx_transactions_salary ON transactions(is_salary)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_category ON transactions(category)');
+    await db.execute(
+        'CREATE INDEX idx_alerts_read ON alerts(is_read)');
   }
 
   static Future<void> _onUpgrade(
@@ -160,6 +207,58 @@ class LocalStorageService {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_transactions_salary ON transactions(is_salary)');
     }
+    if (oldVersion < 3) {
+      // Add category and note columns
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN category TEXT');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN note TEXT');
+
+      // Create budgets table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS budgets (
+          id TEXT PRIMARY KEY,
+          category TEXT NOT NULL,
+          monthly_limit REAL NOT NULL,
+          is_ai_suggested INTEGER DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+
+      // Create alerts table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS alerts (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          severity TEXT NOT NULL,
+          transaction_id TEXT,
+          is_read INTEGER DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+
+      // Create EMIs table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS emis (
+          id TEXT PRIMARY KEY,
+          merchant TEXT NOT NULL,
+          amount REAL NOT NULL,
+          day_of_month INTEGER NOT NULL,
+          occurrences TEXT,
+          total_detected INTEGER NOT NULL,
+          estimated_total INTEGER,
+          is_active INTEGER DEFAULT 1
+        )
+      ''');
+
+      // New indexes
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(is_read)');
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -188,6 +287,8 @@ class LocalStorageService {
         'account_id': tx.accountId,
         'is_user_corrected': tx.isUserCorrected ? 1 : 0,
         'is_salary': tx.isSalary ? 1 : 0,
+        'category': tx.category?.name,
+        'note': tx.note,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -220,6 +321,8 @@ class LocalStorageService {
           'account_id': tx.accountId,
           'is_user_corrected': tx.isUserCorrected ? 1 : 0,
           'is_salary': tx.isSalary ? 1 : 0,
+          'category': tx.category?.name,
+          'note': tx.note,
           'created_at': DateTime.now().millisecondsSinceEpoch,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -241,6 +344,8 @@ class LocalStorageService {
         'account_id': tx.accountId,
         'is_user_corrected': 1,
         'is_salary': tx.isSalary ? 1 : 0,
+        'category': tx.category?.name,
+        'note': tx.note,
       },
       where: 'id = ?',
       whereArgs: [tx.id],
@@ -297,6 +402,13 @@ class LocalStorageService {
       accountId: row['account_id'] as String?,
       isUserCorrected: (row['is_user_corrected'] as int?) == 1,
       isSalary: (row['is_salary'] as int?) == 1,
+      category: row['category'] != null
+          ? TransactionCategory.values.firstWhere(
+              (c) => c.name == row['category'],
+              orElse: () => TransactionCategory.uncategorized,
+            )
+          : null,
+      note: row['note'] as String?,
     );
   }
 
@@ -715,5 +827,158 @@ class LocalStorageService {
       await db.close();
       _db = null;
     }
+  }
+
+  // ==================== BUDGET OPERATIONS ====================
+
+  /// Save a budget
+  static Future<void> saveBudget(Budget budget) async {
+    final db = await database;
+    await db.insert(
+      'budgets',
+      budget.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Get all budgets
+  static Future<List<Budget>> getAllBudgets() async {
+    final db = await database;
+    final rows = await db.query('budgets', orderBy: 'created_at DESC');
+    return rows.map((r) => Budget.fromMap(r)).toList();
+  }
+
+  /// Delete a budget
+  static Future<void> deleteBudget(String budgetId) async {
+    final db = await database;
+    await db.delete('budgets', where: 'id = ?', whereArgs: [budgetId]);
+  }
+
+  /// Clear all budgets
+  static Future<void> clearBudgets() async {
+    final db = await database;
+    await db.delete('budgets');
+  }
+
+  // ==================== ALERT OPERATIONS ====================
+
+  /// Save an alert
+  static Future<void> saveAlert(AppAlert alert) async {
+    final db = await database;
+    await db.insert(
+      'alerts',
+      alert.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// Save multiple alerts
+  static Future<void> saveAlerts(List<AppAlert> alerts) async {
+    final db = await database;
+    final batch = db.batch();
+    for (final alert in alerts) {
+      batch.insert('alerts', alert.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Get unread alerts
+  static Future<List<AppAlert>> getUnreadAlerts() async {
+    final db = await database;
+    final rows = await db.query(
+      'alerts',
+      where: 'is_read = 0',
+      orderBy: 'created_at DESC',
+    );
+    return rows.map((r) => AppAlert.fromMap(r)).toList();
+  }
+
+  /// Get all alerts
+  static Future<List<AppAlert>> getAllAlerts() async {
+    final db = await database;
+    final rows = await db.query('alerts', orderBy: 'created_at DESC');
+    return rows.map((r) => AppAlert.fromMap(r)).toList();
+  }
+
+  /// Mark alert as read
+  static Future<void> markAlertRead(String alertId) async {
+    final db = await database;
+    await db.update(
+      'alerts',
+      {'is_read': 1},
+      where: 'id = ?',
+      whereArgs: [alertId],
+    );
+  }
+
+  /// Mark all alerts as read
+  static Future<void> markAllAlertsRead() async {
+    final db = await database;
+    await db.update('alerts', {'is_read': 1});
+  }
+
+  /// Delete old alerts (older than 30 days)
+  static Future<void> cleanOldAlerts() async {
+    final db = await database;
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 30))
+        .millisecondsSinceEpoch;
+    await db.delete('alerts', where: 'created_at < ?', whereArgs: [cutoff]);
+  }
+
+  // ==================== EMI OPERATIONS ====================
+
+  /// Save detected EMIs
+  static Future<void> saveEMIs(List<Map<String, dynamic>> emis) async {
+    final db = await database;
+    await db.delete('emis'); // Replace all
+    final batch = db.batch();
+    for (final emi in emis) {
+      batch.insert('emis', emi, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  // ==================== CATEGORY OPERATIONS ====================
+
+  /// Update transaction category
+  static Future<void> updateTransactionCategory(
+      String txId, TransactionCategory category) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'category': category.name},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Update transaction note
+  static Future<void> updateTransactionNote(
+      String txId, String? note) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'note': note},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Batch update categories for uncategorized transactions
+  static Future<void> batchUpdateCategories(
+      Map<String, TransactionCategory> updates) async {
+    final db = await database;
+    final batch = db.batch();
+    for (final entry in updates.entries) {
+      batch.update(
+        'transactions',
+        {'category': entry.value.name},
+        where: 'id = ?',
+        whereArgs: [entry.key],
+      );
+    }
+    await batch.commit(noResult: true);
   }
 }
