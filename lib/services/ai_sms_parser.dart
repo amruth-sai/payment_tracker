@@ -53,7 +53,7 @@ class AiSmsParser {
         if (aiResult != null) return aiResult;
       } catch (e) {
         // AI failed, fall back to rule-based
-        print('AI parsing failed: $e');
+        // Continue to rule-based parsing
       }
     }
 
@@ -150,7 +150,7 @@ Rules:
         balance: (data['balance'] as num?)?.toDouble(),
       );
     } catch (e) {
-      print('Failed to parse AI response: $e');
+      // Failed to parse AI response
       return null;
     }
   }

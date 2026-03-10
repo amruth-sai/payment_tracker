@@ -63,7 +63,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.3),
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -101,7 +101,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.2),
+                    color: Colors.orange.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
@@ -203,8 +203,8 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               label: Text(
                   _tx.isCredit ? 'Money In (Credit)' : 'Money Out (Debit)'),
               backgroundColor: _tx.isCredit
-                  ? Colors.green.withOpacity(0.2)
-                  : Colors.red.withOpacity(0.2),
+                  ? Colors.green.withValues(alpha: 0.2)
+                  : Colors.red.withValues(alpha: 0.2),
             ),
             const SizedBox(height: 16),
             const Text('Change it to:'),

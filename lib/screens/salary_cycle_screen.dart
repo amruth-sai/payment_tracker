@@ -239,8 +239,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: tx.isSalary
-              ? Colors.green.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.1),
+              ? Colors.green.withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.1),
           child: Icon(
             tx.isSalary ? Icons.check : Icons.attach_money,
             color: tx.isSalary ? Colors.green : Colors.grey,
@@ -271,7 +271,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.2),
+                  color: Colors.green.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
@@ -312,8 +312,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: cycle.isCurrent
-                          ? Colors.blue.withOpacity(0.2)
-                          : Colors.grey.withOpacity(0.1),
+                          ? Colors.blue.withValues(alpha: 0.2)
+                          : Colors.grey.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -330,7 +330,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.2),
+                        color: Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
@@ -679,8 +679,8 @@ class _CycleDetailSheet extends StatelessWidget {
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: tx.isDebit
-                ? Colors.red.withOpacity(0.1)
-                : Colors.green.withOpacity(0.1),
+                ? Colors.red.withValues(alpha: 0.1)
+                : Colors.green.withValues(alpha: 0.1),
             child: Icon(
               tx.isDebit ? Icons.arrow_upward : Icons.arrow_downward,
               color: tx.isDebit ? Colors.red : Colors.green,
@@ -748,7 +748,7 @@ class _StatBox extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(

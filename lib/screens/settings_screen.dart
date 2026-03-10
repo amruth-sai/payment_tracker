@@ -137,8 +137,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         backgroundColor: _aiEnabled
-                            ? Colors.green.withOpacity(0.1)
-                            : Colors.grey.withOpacity(0.1),
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : Colors.grey.withValues(alpha: 0.1),
                       ),
                     ],
                   ),
@@ -228,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Info Card
           Card(
-            color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(

@@ -16,8 +16,8 @@ class TransactionCard extends StatelessWidget {
     final isCredit = tx.isCredit;
     final color = isCredit ? const Color(0xFF1DB954) : const Color(0xFFE53935);
     final bgColor = isCredit
-        ? const Color(0xFF1DB954).withOpacity(0.08)
-        : const Color(0xFFE53935).withOpacity(0.08);
+        ? const Color(0xFF1DB954).withValues(alpha: 0.08)
+        : const Color(0xFFE53935).withValues(alpha: 0.08);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
@@ -140,7 +140,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

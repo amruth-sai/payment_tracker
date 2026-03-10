@@ -142,7 +142,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: _getAccountColor(account.type).withOpacity(0.2),
+          backgroundColor: _getAccountColor(account.type).withValues(alpha: 0.2),
           child: Icon(
             _getAccountIcon(account.type),
             color: _getAccountColor(account.type),

@@ -14,7 +14,6 @@ class SpendingBreakdownScreen extends StatefulWidget {
 }
 
 class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
-  List<Account> _accounts = [];
   List<Transaction> _transactions = [];
   Map<String, _AccountStats> _stats = {};
   bool _isLoading = true;
@@ -71,7 +70,6 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
     }
 
     setState(() {
-      _accounts = accounts;
       _transactions = transactions;
       _stats = stats;
       _isLoading = false;
@@ -229,7 +227,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                   CircleAvatar(
                     radius: 20,
                     backgroundColor:
-                        _getAccountColor(account.type).withOpacity(0.2),
+                        _getAccountColor(account.type).withValues(alpha: 0.2),
                     child: Icon(
                       _getAccountIcon(account.type),
                       color: _getAccountColor(account.type),
@@ -343,7 +341,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 children: [
                   CircleAvatar(
                     backgroundColor:
-                        _getAccountColor(stat.account.type).withOpacity(0.2),
+                        _getAccountColor(stat.account.type).withValues(alpha: 0.2),
                     child: Icon(
                       _getAccountIcon(stat.account.type),
                       color: _getAccountColor(stat.account.type),
@@ -385,8 +383,8 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: tx.isDebit
-                          ? Colors.red.withOpacity(0.1)
-                          : Colors.green.withOpacity(0.1),
+                          ? Colors.red.withValues(alpha: 0.1)
+                          : Colors.green.withValues(alpha: 0.1),
                       child: Icon(
                         tx.isDebit ? Icons.arrow_upward : Icons.arrow_downward,
                         color: tx.isDebit ? Colors.red : Colors.green,

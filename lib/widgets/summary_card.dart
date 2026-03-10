@@ -51,7 +51,7 @@ class SummaryCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onPrimaryContainer.withOpacity(0.1),
+                  color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -78,7 +78,7 @@ class SummaryCard extends StatelessWidget {
           Text(
             'Net flow',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer.withOpacity(0.7),
+              color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
             ),
           ),
 
@@ -135,7 +135,7 @@ class _FlowTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.25),
+        color: Colors.white.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
