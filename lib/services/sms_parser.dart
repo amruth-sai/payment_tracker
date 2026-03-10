@@ -9,6 +9,7 @@ class SmsParser {
     'HDFCBK', 'SBIINB', 'ICICIB', 'AXISBK', 'KOTAKB', 'PNBSMS',
     'BOIIND', 'CANBNK', 'UNIONB', 'INDUSB', 'YESBK', 'IDBIBK',
     'HSBC', 'SCBNK', 'CITIBK', 'RBLBNK', 'FEDRAL',
+    'BOBSMS', 'BOBONE', 'BOBBNK',  // Bank of Baroda / OneCard
     
     // Telecom & Digital Banks
     'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK',  // Airtel Payments Bank
@@ -21,9 +22,16 @@ class SmsParser {
     // Fintech & Neo-banks
     'CREDCLUB', 'SLICE', 'JUPITER', 'FININ', 'FIAPP',
     'NIYOBNK', 'OPENBNK', 'RAZORPY',
+    'ONECARD', 'ONECRD',  // OneCard
     
     // Others
     'ATMMSG', 'TXNALRT', 'ALERTS',
+  ];
+
+  // Credit card issuers - transactions from these are typically debits (spending)
+  static const _creditCardSenders = [
+    'ONECARD', 'ONECRD', 'BOBONE',  // OneCard (Bank of Baroda)
+    'SLICE', 'CREDCLUB',
   ];
 
   static bool isBankSms(String sender) {
@@ -46,7 +54,7 @@ class SmsParser {
     final amount = _extractAmount(body);
     if (amount == null || amount <= 0) return null;
 
-    final type = _detectType(body);
+    final type = _detectType(body, sender);
     if (type == TransactionType.unknown) return null;
 
     return Transaction(
@@ -83,8 +91,23 @@ class SmsParser {
     return null;
   }
 
-  static TransactionType _detectType(String body) {
+  static TransactionType _detectType(String body, String sender) {
     final lower = body.toLowerCase();
+    final senderUpper = sender.toUpperCase();
+
+    // Check if this is from a credit card issuer (typically these are spending alerts)
+    final isFromCreditCard = _creditCardSenders.any((s) => senderUpper.contains(s));
+    
+    // Credit card specific patterns - these are almost always debits (spending)
+    final creditCardSpendPatterns = [
+      'spent', 'transaction of', 'txn of', 'purchase', 'used at',
+      'transaction at', 'payment of', 'charged', 'bill payment',
+    ];
+    
+    // If from credit card sender and matches spend pattern, it's a debit
+    if (isFromCreditCard && creditCardSpendPatterns.any((p) => lower.contains(p))) {
+      return TransactionType.debit;
+    }
 
     final creditWords = [
       'credited', 'received', 'credit', 'deposited',
@@ -94,17 +117,48 @@ class SmsParser {
     final debitWords = [
       'debited', 'spent', 'debit', 'payment', 'paid',
       'withdrawn', 'transferred to', 'purchase', 'charged',
-      'used at', 'sent to', 'transaction at',
+      'used at', 'sent to', 'transaction at', 'txn of',
+      'transaction of', 'bill payment',
     ];
+
+    // Context-aware detection: "credited to merchant" means debit for you
+    // "your account credited" means credit for you
+    if (lower.contains('credited to') && !lower.contains('your') && !lower.contains('a/c credited')) {
+      return TransactionType.debit;
+    }
+    
+    // "Amount debited from" is a clear debit
+    if (lower.contains('debited from') || lower.contains('debit from')) {
+      return TransactionType.debit;
+    }
+    
+    // "Amount credited to your" is a clear credit
+    if (lower.contains('credited to your') || lower.contains('credit to your')) {
+      return TransactionType.credit;
+    }
 
     bool hasCredit = creditWords.any((w) => lower.contains(w));
     bool hasDebit = debitWords.any((w) => lower.contains(w));
 
+    // If from credit card and both signals present, prefer debit (spending)
+    if (isFromCreditCard && hasCredit && hasDebit) {
+      return TransactionType.debit;
+    }
+
     if (hasCredit && !hasDebit) return TransactionType.credit;
     if (hasDebit && !hasCredit) return TransactionType.debit;
-    // Both or neither – try positional heuristic
-    if (hasCredit) return TransactionType.credit;
-    if (hasDebit) return TransactionType.debit;
+    
+    // Both or neither – use positional heuristic
+    // Check what comes first in the message
+    if (hasCredit && hasDebit) {
+      int creditPos = creditWords.map((w) => lower.indexOf(w)).where((i) => i >= 0).reduce((a, b) => a < b ? a : b);
+      int debitPos = debitWords.map((w) => lower.indexOf(w)).where((i) => i >= 0).reduce((a, b) => a < b ? a : b);
+      return creditPos < debitPos ? TransactionType.credit : TransactionType.debit;
+    }
+    
+    // If from credit card and no clear signal, assume debit
+    if (isFromCreditCard) return TransactionType.debit;
+    
     return TransactionType.unknown;
   }
 

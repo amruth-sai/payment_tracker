@@ -10,6 +10,9 @@ import '../widgets/summary_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
 import 'all_transactions_screen.dart';
 import 'settings_screen.dart';
+import 'accounts_screen.dart';
+import 'spending_breakdown_screen.dart';
+import 'salary_cycle_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -77,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: CustomScrollView(
               slivers: [
                 _buildAppBar(context),
+                SliverToBoxAdapter(child: _buildQuickActions()),
                 SliverToBoxAdapter(
                   child: SummaryCard(
                     totalIn: sms.totalCredits,
@@ -189,6 +193,45 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildQuickActions() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          _QuickActionButton(
+            icon: Icons.account_balance_wallet,
+            label: 'Accounts',
+            color: Colors.blue,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AccountsScreen()),
+            ),
+          ),
+          const SizedBox(width: 12),
+          _QuickActionButton(
+            icon: Icons.pie_chart,
+            label: 'Breakdown',
+            color: Colors.purple,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SpendingBreakdownScreen()),
+            ),
+          ),
+          const SizedBox(width: 12),
+          _QuickActionButton(
+            icon: Icons.calendar_month,
+            label: 'Salary Cycles',
+            color: Colors.green,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SalaryCycleScreen()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFilterRow() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -252,6 +295,55 @@ class _ErrorView extends StatelessWidget {
               label: const Text('Try Again'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
