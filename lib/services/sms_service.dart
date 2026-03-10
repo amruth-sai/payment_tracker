@@ -69,7 +69,7 @@ class SmsService extends ChangeNotifier {
         sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
       );
 
-      final allSms = [...(inbox ?? []), ...(sent ?? [])];
+      final allSms = [...inbox, ...sent];
       final parsed = <Transaction>[];
 
       for (final sms in allSms) {

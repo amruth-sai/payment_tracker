@@ -113,7 +113,7 @@ class SmsParser {
   static String? _extractMerchant(String body, TransactionType type) {
     if (type == TransactionType.debit) {
       // "at MERCHANT NAME" or "to VPA@bank"
-      final atMatch = RegExp(r'(?:at|to)\s+([A-Z][A-Za-z0-9 &\-\']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)', caseSensitive: false)
+      final atMatch = RegExp(r"(?:at|to)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)", caseSensitive: false)
           .firstMatch(body);
       if (atMatch != null) {
         final name = atMatch.group(1)!.trim();
@@ -121,7 +121,7 @@ class SmsParser {
       }
     }
     if (type == TransactionType.credit) {
-      final fromMatch = RegExp(r'(?:from|by)\s+([A-Z][A-Za-z0-9 &\-\']+?)(?:\s+on|\s+via|\s+ref|\.|,|$)', caseSensitive: false)
+      final fromMatch = RegExp(r"(?:from|by)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+ref|\.|,|$)", caseSensitive: false)
           .firstMatch(body);
       if (fromMatch != null) {
         final name = fromMatch.group(1)!.trim();
