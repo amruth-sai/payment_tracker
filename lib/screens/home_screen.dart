@@ -3,11 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
+import '../services/ai_sms_parser.dart';
 import '../models/transaction.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
 import 'all_transactions_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,8 +25,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<SmsService>().loadTransactions();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final sms = context.read<SmsService>();
+      await sms.initializeAI(); // Load AI if API key exists
+      sms.loadTransactions();
     });
   }
 
@@ -119,19 +123,56 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAppBar(BuildContext context) {
+    // ignore: unused_local_variable
+    final _ = context.watch<SmsService>(); // Trigger rebuild when AI status changes
     return SliverAppBar(
       floating: true,
       snap: true,
-      title: const Text(
-        'Payment Tracker',
-        style: TextStyle(fontWeight: FontWeight.w800),
+      title: Row(
+        children: [
+          const Text(
+            'Payment Tracker',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          if (AiSmsParser.isInitialized) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome, size: 12, color: Colors.amber),
+                  SizedBox(width: 2),
+                  Text('AI', style: TextStyle(fontSize: 10, color: Colors.amber)),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
           onPressed: () => context.read<SmsService>().loadTransactions(),
         ),
-        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
+            // Reload with potentially new AI settings
+            if (context.mounted) {
+              context.read<SmsService>().loadTransactions();
+            }
+          },
+        ),
+        const SizedBox(width: 4),
       ],
     );
   }

@@ -5,6 +5,7 @@ import 'package:another_telephony/telephony.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/transaction.dart';
 import 'sms_parser.dart';
+import 'ai_sms_parser.dart';
 
 class SmsService extends ChangeNotifier {
   final Telephony _telephony = Telephony.instance;
@@ -13,11 +14,17 @@ class SmsService extends ChangeNotifier {
   bool _isLoading = false;
   bool _hasPermission = false;
   String? _error;
+  bool _useAI = false;
+  int _aiParsedCount = 0;
+  int _ruleParsedCount = 0;
 
   List<Transaction> get transactions => _transactions;
   bool get isLoading => _isLoading;
   bool get hasPermission => _hasPermission;
   String? get error => _error;
+  bool get useAI => _useAI;
+  int get aiParsedCount => _aiParsedCount;
+  int get ruleParsedCount => _ruleParsedCount;
 
   List<Transaction> get credits =>
       _transactions.where((t) => t.isCredit).toList();
@@ -38,9 +45,17 @@ class SmsService extends ChangeNotifier {
     return _hasPermission;
   }
 
-  Future<void> loadTransactions({int daysBack = 90}) async {
+  /// Initialize AI parser if API key is available
+  Future<void> initializeAI() async {
+    _useAI = await AiSmsParser.loadSavedApiKey();
+    notifyListeners();
+  }
+
+  Future<void> loadTransactions({int daysBack = 90, bool forceAI = false}) async {
     _isLoading = true;
     _error = null;
+    _aiParsedCount = 0;
+    _ruleParsedCount = 0;
     notifyListeners();
 
     try {
@@ -52,6 +67,9 @@ class SmsService extends ChangeNotifier {
         return;
       }
       _hasPermission = true;
+
+      // Check if AI should be used
+      _useAI = AiSmsParser.isInitialized || forceAI;
 
       final cutoff = DateTime.now().subtract(Duration(days: daysBack));
       final cutoffMs = cutoff.millisecondsSinceEpoch;
@@ -79,10 +97,21 @@ class SmsService extends ChangeNotifier {
         final date = DateTime.fromMillisecondsSinceEpoch(dateMs);
         final id = sms.id?.toString() ?? UniqueKey().toString();
 
-        // Only process bank/payment SMS
-        if (!SmsParser.isBankSms(sender)) continue;
+        Transaction? tx;
 
-        final tx = SmsParser.parse(body, sender, date, id);
+        if (_useAI) {
+          // Use AI parser - it can detect ANY transaction
+          if (AiSmsParser.mightBeTransaction(body)) {
+            tx = await AiSmsParser.parse(body, sender, date, id);
+            if (tx != null) _aiParsedCount++;
+          }
+        } else {
+          // Use rule-based parser - limited to known senders
+          if (!SmsParser.isBankSms(sender)) continue;
+          tx = SmsParser.parse(body, sender, date, id);
+          if (tx != null) _ruleParsedCount++;
+        }
+
         if (tx != null) parsed.add(tx);
       }
 

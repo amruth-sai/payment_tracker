@@ -5,11 +5,25 @@ import '../models/transaction.dart';
 class SmsParser {
   // Known bank/payment sender IDs
   static const _knownSenders = [
+    // Traditional Banks
     'HDFCBK', 'SBIINB', 'ICICIB', 'AXISBK', 'KOTAKB', 'PNBSMS',
     'BOIIND', 'CANBNK', 'UNIONB', 'INDUSB', 'YESBK', 'IDBIBK',
-    'PAYTM', 'GPAY', 'PHONEPE', 'AMAZONPAY', 'MOBIKWIK',
     'HSBC', 'SCBNK', 'CITIBK', 'RBLBNK', 'FEDRAL',
-    'ATMMSG', 'CREDCLUB', 'SLICE', 'JUPITER', 'FININ',
+    
+    // Telecom & Digital Banks
+    'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK',  // Airtel Payments Bank
+    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK',  // Jio Payments / Jio Finance
+    
+    // UPI & Wallets  
+    'PAYTM', 'GPAY', 'PHONEPE', 'AMAZONPAY', 'MOBIKWIK',
+    'BHIMUPI', 'UPIPAY',
+    
+    // Fintech & Neo-banks
+    'CREDCLUB', 'SLICE', 'JUPITER', 'FININ', 'FIAPP',
+    'NIYOBNK', 'OPENBNK', 'RAZORPY',
+    
+    // Others
+    'ATMMSG', 'TXNALRT', 'ALERTS',
   ];
 
   static bool isBankSms(String sender) {
