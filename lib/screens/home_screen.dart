@@ -38,13 +38,25 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Consumer<SmsService>(
         builder: (context, sms, _) {
           if (sms.isLoading) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Reading your messages...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(sms.loadingStatus.isNotEmpty 
+                    ? sms.loadingStatus 
+                    : 'Reading your messages...'),
+                  if (sms.cachedCount > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '${sms.cachedCount} cached transactions loaded',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             );

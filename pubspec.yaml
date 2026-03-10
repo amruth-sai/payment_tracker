@@ -18,6 +18,8 @@ dependencies:
   shared_preferences: ^2.2.3  # Local storage for settings
   http: ^1.2.0                # For AI API calls
   google_generative_ai: ^0.4.0 # Google Gemini AI
+  sqflite: ^2.3.0             # Local SQLite database
+  path: ^1.8.3                # Path utilities for database
 
 dev_dependencies:
   flutter_test:

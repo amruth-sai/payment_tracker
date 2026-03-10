@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/ai_sms_parser.dart';
+import '../services/local_storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,11 +17,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _obscureKey = true;
   bool _aiEnabled = false;
+  Map<String, int> _cacheStats = {};
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadCacheStats();
   }
 
   Future<void> _loadSettings() async {
@@ -30,6 +33,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _apiKeyController.text = savedKey;
       _aiEnabled = savedKey.isNotEmpty && AiSmsParser.isInitialized;
     });
+  }
+
+  Future<void> _loadCacheStats() async {
+    final stats = await LocalStorageService.getStats();
+    setState(() => _cacheStats = stats);
   }
 
   Future<void> _saveApiKey() async {
@@ -257,6 +265,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
           
           const SizedBox(height: 16),
           
+          // Cache Stats Card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.storage, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Local Cache',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Parsed transactions are cached locally to avoid re-processing.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStatRow('Cached Transactions', '${_cacheStats['transactions'] ?? 0}'),
+                  _buildStatRow('Processed SMS', '${_cacheStats['processed_sms'] ?? 0}'),
+                  _buildStatRow('AI-Parsed', '${_cacheStats['ai_parsed'] ?? 0}'),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _clearCache,
+                      icon: const Icon(Icons.delete_sweep),
+                      label: const Text('Clear Cache & Re-parse All'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
           // Supported Banks Info
           Card(
             child: Padding(
@@ -293,8 +350,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          
+          const SizedBox(height: 24),
         ],
       ),
     );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14)),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearCache() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Cache?'),
+        content: const Text(
+          'This will delete all cached transactions and re-parse all SMS messages. '
+          'This may use AI API calls if enabled.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await LocalStorageService.clearAll();
+      await _loadCacheStats();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cache cleared. Pull to refresh on home screen.')),
+        );
+      }
+    }
   }
 }
