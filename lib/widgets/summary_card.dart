@@ -48,7 +48,8 @@ class SummaryCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.onPrimaryContainer.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -69,7 +70,9 @@ class SummaryCard extends StatelessWidget {
             '${isPositive ? '+' : ''}₹${_fmt(net)}',
             style: theme.textTheme.headlineLarge?.copyWith(
               fontWeight: FontWeight.w800,
-              color: isPositive ? const Color(0xFF1DB954) : const Color(0xFFE53935),
+              color: isPositive
+                  ? const Color(0xFF1DB954)
+                  : const Color(0xFFE53935),
             ),
           ),
           Text(

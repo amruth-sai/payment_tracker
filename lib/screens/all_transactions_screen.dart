@@ -40,7 +40,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('All Transactions', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('All Transactions',
+            style: TextStyle(fontWeight: FontWeight.w700)),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -68,8 +69,11 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                 return TabBarView(
                   controller: _tabController,
                   children: [
-                    _TxList(transactions: _filter(sms.transactions), search: _search),
-                    _TxList(transactions: _filter(sms.credits), search: _search),
+                    _TxList(
+                        transactions: _filter(sms.transactions),
+                        search: _search),
+                    _TxList(
+                        transactions: _filter(sms.credits), search: _search),
                     _TxList(transactions: _filter(sms.debits), search: _search),
                   ],
                 );
@@ -107,7 +111,9 @@ class _TxList extends StatelessWidget {
             const Icon(Icons.inbox_outlined, size: 48, color: Colors.grey),
             const SizedBox(height: 12),
             Text(
-              search.isNotEmpty ? 'No results for "$search"' : 'No transactions',
+              search.isNotEmpty
+                  ? 'No results for "$search"'
+                  : 'No transactions',
               style: const TextStyle(color: Colors.grey),
             ),
           ],
@@ -137,9 +143,9 @@ class _TxList extends StatelessWidget {
               child: Text(
                 key,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
             ),
             ...txs.map(
@@ -160,8 +166,20 @@ class _TxList extends StatelessWidget {
     final d = DateTime(date.year, date.month, date.day);
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 }

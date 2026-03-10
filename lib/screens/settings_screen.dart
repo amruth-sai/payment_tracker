@@ -99,7 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -223,9 +223,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Info Card
           Card(
             color: theme.colorScheme.primaryContainer.withOpacity(0.3),
@@ -262,9 +262,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Cache Stats Card
           Card(
             child: Padding(
@@ -292,9 +292,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _buildStatRow('Cached Transactions', '${_cacheStats['transactions'] ?? 0}'),
-                  _buildStatRow('Processed SMS', '${_cacheStats['processed_sms'] ?? 0}'),
-                  _buildStatRow('AI-Parsed', '${_cacheStats['ai_parsed'] ?? 0}'),
+                  _buildStatRow('Cached Transactions',
+                      '${_cacheStats['transactions'] ?? 0}'),
+                  _buildStatRow(
+                      'Processed SMS', '${_cacheStats['processed_sms'] ?? 0}'),
+                  _buildStatRow(
+                      'AI-Parsed', '${_cacheStats['ai_parsed'] ?? 0}'),
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -311,9 +314,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Supported Banks Info
           Card(
             child: Padding(
@@ -337,20 +340,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     spacing: 4,
                     runSpacing: 4,
                     children: [
-                      'HDFC', 'SBI', 'ICICI', 'Axis', 'Kotak',
-                      'Airtel', 'Jio', 'Paytm', 'GPay', 'PhonePe',
-                      'Amazon', 'CRED', 'Slice', 'Jupiter',
-                    ].map((bank) => Chip(
-                      label: Text(bank, style: const TextStyle(fontSize: 11)),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    )).toList(),
+                      'HDFC',
+                      'SBI',
+                      'ICICI',
+                      'Axis',
+                      'Kotak',
+                      'Airtel',
+                      'Jio',
+                      'Paytm',
+                      'GPay',
+                      'PhonePe',
+                      'Amazon',
+                      'CRED',
+                      'Slice',
+                      'Jupiter',
+                    ]
+                        .map((bank) => Chip(
+                              label: Text(bank,
+                                  style: const TextStyle(fontSize: 11)),
+                              padding: EdgeInsets.zero,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ))
+                        .toList(),
                   ),
                 ],
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
         ],
       ),
@@ -404,7 +422,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadCacheStats();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cache cleared. Pull to refresh on home screen.')),
+          const SnackBar(
+              content: Text('Cache cleared. Pull to refresh on home screen.')),
         );
       }
     }

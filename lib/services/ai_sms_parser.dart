@@ -11,7 +11,7 @@ import 'sms_parser.dart';
 class AiSmsParser {
   static GenerativeModel? _model;
   static bool _isInitialized = false;
-  
+
   /// Initialize with your Gemini API key
   /// Get your key at: https://aistudio.google.com/app/apikey
   static Future<void> initialize(String apiKey) async {
@@ -20,12 +20,12 @@ class AiSmsParser {
       apiKey: apiKey,
     );
     _isInitialized = true;
-    
+
     // Save API key for future use
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('gemini_api_key', apiKey);
   }
-  
+
   /// Load saved API key
   static Future<bool> loadSavedApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -36,9 +36,9 @@ class AiSmsParser {
     }
     return false;
   }
-  
+
   static bool get isInitialized => _isInitialized;
-  
+
   /// Parse SMS using AI with fallback to rule-based parsing
   static Future<Transaction?> parse(
     String body,
@@ -56,11 +56,11 @@ class AiSmsParser {
         print('AI parsing failed: $e');
       }
     }
-    
+
     // Fallback to rule-based parsing
     return SmsParser.parse(body, sender, date, id);
   }
-  
+
   /// Parse SMS using Gemini AI
   static Future<Transaction?> _parseWithAI(
     String body,
@@ -97,30 +97,29 @@ Rules:
 
     final response = await _model!.generateContent([Content.text(prompt)]);
     final text = response.text;
-    
+
     if (text == null || text.isEmpty) return null;
-    
+
     // Clean up response (remove markdown code blocks if present)
     String jsonStr = text.trim();
     if (jsonStr.startsWith('```')) {
       jsonStr = jsonStr.replaceAll(RegExp(r'^```\w*\n?'), '');
       jsonStr = jsonStr.replaceAll(RegExp(r'\n?```$'), '');
     }
-    
+
     try {
       final data = jsonDecode(jsonStr) as Map<String, dynamic>;
-      
+
       if (data['is_transaction'] != true) return null;
-      
+
       final typeStr = data['type'] as String?;
       final amount = (data['amount'] as num?)?.toDouble();
-      
+
       if (typeStr == null || amount == null || amount <= 0) return null;
-      
-      final type = typeStr == 'credit' 
-          ? TransactionType.credit 
-          : TransactionType.debit;
-      
+
+      final type =
+          typeStr == 'credit' ? TransactionType.credit : TransactionType.debit;
+
       final sourceStr = data['source'] as String? ?? 'bank';
       PaymentSource source;
       switch (sourceStr.toLowerCase()) {
@@ -136,7 +135,7 @@ Rules:
         default:
           source = PaymentSource.bank;
       }
-      
+
       return Transaction(
         id: id,
         amount: amount,
@@ -155,11 +154,11 @@ Rules:
       return null;
     }
   }
-  
+
   static String _cleanSender(String sender) {
     return sender.replaceAll(RegExp(r'^[A-Z]{2}-'), '');
   }
-  
+
   /// Check if SMS might be a transaction (quick pre-filter)
   static bool mightBeTransaction(String body) {
     final lower = body.toLowerCase();
@@ -174,26 +173,26 @@ Rules:
         lower.contains('received') ||
         lower.contains('balance');
   }
-  
+
   /// Batch parse multiple SMS messages efficiently
   static Future<List<Transaction>> parseBatch(
     List<Map<String, dynamic>> messages,
   ) async {
     final transactions = <Transaction>[];
-    
+
     for (final msg in messages) {
       final body = msg['body'] as String;
       final sender = msg['sender'] as String;
       final date = msg['date'] as DateTime;
       final id = msg['id'] as String;
-      
+
       // Quick filter before expensive AI call
       if (!mightBeTransaction(body)) continue;
-      
+
       final tx = await parse(body, sender, date, id);
       if (tx != null) transactions.add(tx);
     }
-    
+
     return transactions;
   }
 }

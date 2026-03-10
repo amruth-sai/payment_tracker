@@ -9,28 +9,28 @@ class SmsParser {
     'HDFCBK', 'SBIINB', 'ICICIB', 'AXISBK', 'KOTAKB', 'PNBSMS',
     'BOIIND', 'CANBNK', 'UNIONB', 'INDUSB', 'YESBK', 'IDBIBK',
     'HSBC', 'SCBNK', 'CITIBK', 'RBLBNK', 'FEDRAL',
-    'BOBSMS', 'BOBONE', 'BOBBNK',  // Bank of Baroda / OneCard
-    
+    'BOBSMS', 'BOBONE', 'BOBBNK', // Bank of Baroda / OneCard
+
     // Telecom & Digital Banks
-    'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK',  // Airtel Payments Bank
-    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK',  // Jio Payments / Jio Finance
-    
-    // UPI & Wallets  
+    'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK', // Airtel Payments Bank
+    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', // Jio Payments / Jio Finance
+
+    // UPI & Wallets
     'PAYTM', 'GPAY', 'PHONEPE', 'AMAZONPAY', 'MOBIKWIK',
     'BHIMUPI', 'UPIPAY',
-    
+
     // Fintech & Neo-banks
     'CREDCLUB', 'SLICE', 'JUPITER', 'FININ', 'FIAPP',
     'NIYOBNK', 'OPENBNK', 'RAZORPY',
-    'ONECARD', 'ONECRD',  // OneCard
-    
+    'ONECARD', 'ONECRD', // OneCard
+
     // Others
     'ATMMSG', 'TXNALRT', 'ALERTS',
   ];
 
   // Credit card issuers - transactions from these are typically debits (spending)
   static const _creditCardSenders = [
-    'ONECARD', 'ONECRD', 'BOBONE',  // OneCard (Bank of Baroda)
+    'ONECARD', 'ONECRD', 'BOBONE', // OneCard (Bank of Baroda)
     'SLICE', 'CREDCLUB',
   ];
 
@@ -40,7 +40,8 @@ class SmsParser {
         RegExp(r'^[A-Z]{2}-[A-Z]{6}$').hasMatch(sender); // DM-HDFCBK format
   }
 
-  static Transaction? parse(String body, String sender, DateTime date, String id) {
+  static Transaction? parse(
+      String body, String sender, DateTime date, String id) {
     final lower = body.toLowerCase();
 
     // Must contain amount indicators
@@ -75,9 +76,13 @@ class SmsParser {
   static double? _extractAmount(String body) {
     // Patterns: Rs.1,234.56 | INR 1234 | ₹1,234.56 | Rs 1234.00
     final patterns = [
-      RegExp(r'(?:rs\.?|inr|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)', caseSensitive: false),
-      RegExp(r'(?:amount|amt)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)', caseSensitive: false),
-      RegExp(r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:rs|inr|₹)', caseSensitive: false),
+      RegExp(r'(?:rs\.?|inr|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+          caseSensitive: false),
+      RegExp(
+          r'(?:amount|amt)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+          caseSensitive: false),
+      RegExp(r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:rs|inr|₹)',
+          caseSensitive: false),
     ];
 
     for (final pattern in patterns) {
@@ -85,7 +90,8 @@ class SmsParser {
       if (match != null) {
         final str = match.group(1)!.replaceAll(',', '');
         final val = double.tryParse(str);
-        if (val != null && val > 0 && val < 10000000) return val; // sanity: < 1 crore
+        if (val != null && val > 0 && val < 10000000)
+          return val; // sanity: < 1 crore
       }
     }
     return null;
@@ -96,44 +102,75 @@ class SmsParser {
     final senderUpper = sender.toUpperCase();
 
     // Check if this is from a credit card issuer (typically these are spending alerts)
-    final isFromCreditCard = _creditCardSenders.any((s) => senderUpper.contains(s));
-    
+    final isFromCreditCard =
+        _creditCardSenders.any((s) => senderUpper.contains(s));
+
     // Credit card specific patterns - these are almost always debits (spending)
     final creditCardSpendPatterns = [
-      'spent', 'transaction of', 'txn of', 'purchase', 'used at',
-      'transaction at', 'payment of', 'charged', 'bill payment',
+      'spent',
+      'transaction of',
+      'txn of',
+      'purchase',
+      'used at',
+      'transaction at',
+      'payment of',
+      'charged',
+      'bill payment',
     ];
-    
+
     // If from credit card sender and matches spend pattern, it's a debit
-    if (isFromCreditCard && creditCardSpendPatterns.any((p) => lower.contains(p))) {
+    if (isFromCreditCard &&
+        creditCardSpendPatterns.any((p) => lower.contains(p))) {
       return TransactionType.debit;
     }
 
     final creditWords = [
-      'credited', 'received', 'credit', 'deposited',
-      'added', 'received from', 'money added', 'cashback',
-      'refund', 'reversed', 'reversal',
+      'credited',
+      'received',
+      'credit',
+      'deposited',
+      'added',
+      'received from',
+      'money added',
+      'cashback',
+      'refund',
+      'reversed',
+      'reversal',
     ];
     final debitWords = [
-      'debited', 'spent', 'debit', 'payment', 'paid',
-      'withdrawn', 'transferred to', 'purchase', 'charged',
-      'used at', 'sent to', 'transaction at', 'txn of',
-      'transaction of', 'bill payment',
+      'debited',
+      'spent',
+      'debit',
+      'payment',
+      'paid',
+      'withdrawn',
+      'transferred to',
+      'purchase',
+      'charged',
+      'used at',
+      'sent to',
+      'transaction at',
+      'txn of',
+      'transaction of',
+      'bill payment',
     ];
 
     // Context-aware detection: "credited to merchant" means debit for you
     // "your account credited" means credit for you
-    if (lower.contains('credited to') && !lower.contains('your') && !lower.contains('a/c credited')) {
+    if (lower.contains('credited to') &&
+        !lower.contains('your') &&
+        !lower.contains('a/c credited')) {
       return TransactionType.debit;
     }
-    
+
     // "Amount debited from" is a clear debit
     if (lower.contains('debited from') || lower.contains('debit from')) {
       return TransactionType.debit;
     }
-    
+
     // "Amount credited to your" is a clear credit
-    if (lower.contains('credited to your') || lower.contains('credit to your')) {
+    if (lower.contains('credited to your') ||
+        lower.contains('credit to your')) {
       return TransactionType.credit;
     }
 
@@ -147,18 +184,26 @@ class SmsParser {
 
     if (hasCredit && !hasDebit) return TransactionType.credit;
     if (hasDebit && !hasCredit) return TransactionType.debit;
-    
+
     // Both or neither – use positional heuristic
     // Check what comes first in the message
     if (hasCredit && hasDebit) {
-      int creditPos = creditWords.map((w) => lower.indexOf(w)).where((i) => i >= 0).reduce((a, b) => a < b ? a : b);
-      int debitPos = debitWords.map((w) => lower.indexOf(w)).where((i) => i >= 0).reduce((a, b) => a < b ? a : b);
-      return creditPos < debitPos ? TransactionType.credit : TransactionType.debit;
+      int creditPos = creditWords
+          .map((w) => lower.indexOf(w))
+          .where((i) => i >= 0)
+          .reduce((a, b) => a < b ? a : b);
+      int debitPos = debitWords
+          .map((w) => lower.indexOf(w))
+          .where((i) => i >= 0)
+          .reduce((a, b) => a < b ? a : b);
+      return creditPos < debitPos
+          ? TransactionType.credit
+          : TransactionType.debit;
     }
-    
+
     // If from credit card and no clear signal, assume debit
     if (isFromCreditCard) return TransactionType.debit;
-    
+
     return TransactionType.unknown;
   }
 
@@ -166,13 +211,20 @@ class SmsParser {
     final lower = body.toLowerCase();
     final s = sender.toUpperCase();
 
-    if (lower.contains('upi') || s.contains('PAYTM') || s.contains('GPAY') || s.contains('PHONEPE')) {
+    if (lower.contains('upi') ||
+        s.contains('PAYTM') ||
+        s.contains('GPAY') ||
+        s.contains('PHONEPE')) {
       return PaymentSource.upi;
     }
-    if (lower.contains('credit card') || lower.contains('debit card') || lower.contains('card no')) {
+    if (lower.contains('credit card') ||
+        lower.contains('debit card') ||
+        lower.contains('card no')) {
       return PaymentSource.card;
     }
-    if (lower.contains('wallet') || s.contains('MOBIKWIK') || s.contains('AMAZONPAY')) {
+    if (lower.contains('wallet') ||
+        s.contains('MOBIKWIK') ||
+        s.contains('AMAZONPAY')) {
       return PaymentSource.wallet;
     }
     return PaymentSource.bank;
@@ -181,7 +233,9 @@ class SmsParser {
   static String? _extractMerchant(String body, TransactionType type) {
     if (type == TransactionType.debit) {
       // "at MERCHANT NAME" or "to VPA@bank"
-      final atMatch = RegExp(r"(?:at|to)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)", caseSensitive: false)
+      final atMatch = RegExp(
+              r"(?:at|to)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)",
+              caseSensitive: false)
           .firstMatch(body);
       if (atMatch != null) {
         final name = atMatch.group(1)!.trim();
@@ -189,7 +243,9 @@ class SmsParser {
       }
     }
     if (type == TransactionType.credit) {
-      final fromMatch = RegExp(r"(?:from|by)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+ref|\.|,|$)", caseSensitive: false)
+      final fromMatch = RegExp(
+              r"(?:from|by)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+ref|\.|,|$)",
+              caseSensitive: false)
           .firstMatch(body);
       if (fromMatch != null) {
         final name = fromMatch.group(1)!.trim();
@@ -200,19 +256,24 @@ class SmsParser {
   }
 
   static String? _extractAccountLast4(String body) {
-    final match = RegExp(r'(?:a/c|account|ac|card)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})', caseSensitive: false)
+    final match = RegExp(
+            r'(?:a/c|account|ac|card)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})',
+            caseSensitive: false)
         .firstMatch(body);
     return match?.group(1);
   }
 
   static String? _extractRefId(String body) {
-    final match = RegExp(r'(?:ref\.?|txn\.?|utr|rrn)[:\s#]+([A-Z0-9]{8,22})', caseSensitive: false)
+    final match = RegExp(r'(?:ref\.?|txn\.?|utr|rrn)[:\s#]+([A-Z0-9]{8,22})',
+            caseSensitive: false)
         .firstMatch(body);
     return match?.group(1);
   }
 
   static double? _extractBalance(String body) {
-    final match = RegExp(r'(?:bal(?:ance)?|avl\.?)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)', caseSensitive: false)
+    final match = RegExp(
+            r'(?:bal(?:ance)?|avl\.?)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+            caseSensitive: false)
         .firstMatch(body);
     if (match != null) {
       final str = match.group(1)!.replaceAll(',', '');

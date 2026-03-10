@@ -11,7 +11,7 @@ import '../models/salary_cycle.dart';
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 2;  // Upgraded for new tables
+  static const int _dbVersion = 2; // Upgraded for new tables
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -101,19 +101,26 @@ class LocalStorageService {
     ''');
 
     // Indexes for faster lookups
-    await db.execute('CREATE INDEX idx_transactions_date ON transactions(date DESC)');
-    await db.execute('CREATE INDEX idx_transactions_type ON transactions(type)');
-    await db.execute('CREATE INDEX idx_transactions_account ON transactions(account_id)');
-    await db.execute('CREATE INDEX idx_transactions_salary ON transactions(is_salary)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_date ON transactions(date DESC)');
+    await db
+        .execute('CREATE INDEX idx_transactions_type ON transactions(type)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_account ON transactions(account_id)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_salary ON transactions(is_salary)');
   }
 
-  static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  static Future<void> _onUpgrade(
+      Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       // Add new columns to transactions table
       await db.execute('ALTER TABLE transactions ADD COLUMN account_id TEXT');
-      await db.execute('ALTER TABLE transactions ADD COLUMN is_user_corrected INTEGER DEFAULT 0');
-      await db.execute('ALTER TABLE transactions ADD COLUMN is_salary INTEGER DEFAULT 0');
-      
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN is_user_corrected INTEGER DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN is_salary INTEGER DEFAULT 0');
+
       // Create new tables
       await db.execute('''
         CREATE TABLE IF NOT EXISTS accounts (
@@ -148,17 +155,20 @@ class LocalStorageService {
       ''');
 
       // Create new indexes
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_salary ON transactions(is_salary)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_salary ON transactions(is_salary)');
     }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
 
   /// Save a parsed transaction to local storage
-  static Future<void> saveTransaction(Transaction tx, {String parsedBy = 'rule'}) async {
+  static Future<void> saveTransaction(Transaction tx,
+      {String parsedBy = 'rule'}) async {
     final db = await database;
-    
+
     await db.insert(
       'transactions',
       {
@@ -185,7 +195,8 @@ class LocalStorageService {
   }
 
   /// Save multiple transactions in a batch
-  static Future<void> saveTransactions(List<Transaction> transactions, {String parsedBy = 'rule'}) async {
+  static Future<void> saveTransactions(List<Transaction> transactions,
+      {String parsedBy = 'rule'}) async {
     final db = await database;
     final batch = db.batch();
 
@@ -313,13 +324,14 @@ class LocalStorageService {
     final db = await database;
     await db.delete('accounts', where: 'id = ?', whereArgs: [accountId]);
     // Also unlink from transactions
-    await db.update('transactions', {'account_id': null}, where: 'account_id = ?', whereArgs: [accountId]);
+    await db.update('transactions', {'account_id': null},
+        where: 'account_id = ?', whereArgs: [accountId]);
   }
 
   /// Auto-detect accounts from transactions
   static Future<List<Account>> detectAccountsFromTransactions() async {
     final db = await database;
-    
+
     // Get unique account_last4 and sender combinations
     final rows = await db.rawQuery('''
       SELECT DISTINCT account_last4, sender, source
@@ -329,17 +341,18 @@ class LocalStorageService {
 
     final existingAccounts = await getAllAccounts();
     final existingLast4 = existingAccounts.map((a) => a.last4Digits).toSet();
-    
+
     final newAccounts = <Account>[];
     for (final row in rows) {
       final last4 = row['account_last4'] as String?;
       if (last4 != null && !existingLast4.contains(last4)) {
         final sender = (row['sender'] as String?) ?? 'Unknown';
         final source = row['source'] as String?;
-        
-        final type = source == 'card' ? AccountType.creditCard : AccountType.bankAccount;
+
+        final type =
+            source == 'card' ? AccountType.creditCard : AccountType.bankAccount;
         final name = _extractBankName(sender);
-        
+
         newAccounts.add(Account(
           id: 'auto_${last4}_${DateTime.now().millisecondsSinceEpoch}',
           name: name,
@@ -351,12 +364,12 @@ class LocalStorageService {
         existingLast4.add(last4);
       }
     }
-    
+
     // Save new accounts
     for (final account in newAccounts) {
       await saveAccount(account);
     }
-    
+
     return newAccounts;
   }
 
@@ -375,7 +388,7 @@ class LocalStorageService {
       'PAYTM': 'Paytm',
       'GPAY': 'Google Pay',
     };
-    
+
     for (final entry in bankNames.entries) {
       if (sender.toUpperCase().contains(entry.key)) {
         return entry.value;
@@ -385,7 +398,8 @@ class LocalStorageService {
   }
 
   /// Get transactions by account
-  static Future<List<Transaction>> getTransactionsByAccount(String accountId) async {
+  static Future<List<Transaction>> getTransactionsByAccount(
+      String accountId) async {
     final db = await database;
     final rows = await db.query(
       'transactions',
@@ -399,7 +413,7 @@ class LocalStorageService {
   /// Get spending summary by account
   static Future<Map<String, Map<String, double>>> getSpendingByAccount() async {
     final db = await database;
-    
+
     final rows = await db.rawQuery('''
       SELECT 
         COALESCE(account_last4, sender) as account_key,
@@ -414,11 +428,11 @@ class LocalStorageService {
       final key = row['account_key'] as String;
       final type = row['type'] as String;
       final total = row['total'] as double;
-      
+
       result.putIfAbsent(key, () => {'credit': 0.0, 'debit': 0.0});
       result[key]![type] = total;
     }
-    
+
     return result;
   }
 
@@ -441,18 +455,19 @@ class LocalStorageService {
   static Future<List<SalaryCycle>> getAllSalaryCycles() async {
     final db = await database;
     final rows = await db.query('salary_cycles', orderBy: 'start_date DESC');
-    
+
     final cycles = <SalaryCycle>[];
     for (final row in rows) {
       final cycle = SalaryCycle.fromMap(row);
-      
+
       // Load transactions for this cycle
       final endDate = cycle.endDate ?? DateTime.now();
-      final transactions = await getTransactionsByDateRange(cycle.startDate, endDate);
-      
+      final transactions =
+          await getTransactionsByDateRange(cycle.startDate, endDate);
+
       cycles.add(cycle.copyWith(transactions: transactions));
     }
-    
+
     return cycles;
   }
 
@@ -473,15 +488,15 @@ class LocalStorageService {
     double? minimumAmount,
   }) async {
     final db = await database;
-    
+
     String whereClause = "type = 'credit'";
     final whereArgs = <dynamic>[];
-    
+
     if (minimumAmount != null) {
       whereClause += ' AND amount >= ?';
       whereArgs.add(minimumAmount);
     }
-    
+
     final rows = await db.query(
       'transactions',
       where: whereClause,
@@ -490,57 +505,58 @@ class LocalStorageService {
     );
 
     final transactions = rows.map(_rowToTransaction).toList();
-    
+
     // Score transactions by likelihood of being salary
     final scored = transactions.map((tx) {
       int score = 0;
       final rawLower = tx.rawMessage.toLowerCase();
       final merchantLower = (tx.merchant ?? '').toLowerCase();
-      
+
       // Check for employer keywords
       for (final keyword in employerKeywords) {
-        if (rawLower.contains(keyword.toLowerCase()) || 
+        if (rawLower.contains(keyword.toLowerCase()) ||
             merchantLower.contains(keyword.toLowerCase())) {
           score += 10;
         }
       }
-      
+
       // Large amounts are more likely to be salary
       if (tx.amount > 50000) score += 5;
       if (tx.amount > 100000) score += 5;
-      
+
       // Already marked as salary
       if (tx.isSalary) score += 20;
-      
+
       return (tx: tx, score: score);
     }).toList();
-    
+
     // Sort by score and return top candidates
     scored.sort((a, b) => b.score.compareTo(a.score));
-    
+
     return scored.map((s) => s.tx).toList();
   }
 
   /// Auto-generate salary cycles from marked salary transactions
   static Future<List<SalaryCycle>> generateSalaryCycles() async {
     final db = await database;
-    
+
     // Get all salary transactions sorted by date
     final rows = await db.query(
       'transactions',
       where: 'is_salary = 1',
       orderBy: 'date ASC',
     );
-    
+
     final salaryTransactions = rows.map(_rowToTransaction).toList();
     if (salaryTransactions.isEmpty) return [];
-    
+
     final cycles = <SalaryCycle>[];
-    
+
     for (int i = 0; i < salaryTransactions.length; i++) {
       final current = salaryTransactions[i];
-      final next = i + 1 < salaryTransactions.length ? salaryTransactions[i + 1] : null;
-      
+      final next =
+          i + 1 < salaryTransactions.length ? salaryTransactions[i + 1] : null;
+
       final cycle = SalaryCycle(
         id: 'cycle_${current.date.millisecondsSinceEpoch}',
         startDate: current.date,
@@ -549,15 +565,15 @@ class LocalStorageService {
         salaryTransactionId: current.id,
         employer: current.merchant,
       );
-      
+
       cycles.add(cycle);
     }
-    
+
     // Save cycles
     for (final cycle in cycles) {
       await saveSalaryCycle(cycle);
     }
-    
+
     return await getAllSalaryCycles();
   }
 
@@ -586,7 +602,8 @@ class LocalStorageService {
   // ==================== PROCESSED SMS TRACKING ====================
 
   /// Mark an SMS as processed (whether it was a transaction or not)
-  static Future<void> markSmsAsProcessed(String smsId, {bool isTransaction = false}) async {
+  static Future<void> markSmsAsProcessed(String smsId,
+      {bool isTransaction = false}) async {
     final db = await database;
     await db.insert(
       'processed_sms',
@@ -645,18 +662,22 @@ class LocalStorageService {
   /// Get count of processed messages
   static Future<Map<String, int>> getStats() async {
     final db = await database;
-    
+
     final txCount = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM transactions'),
-    ) ?? 0;
-    
+          await db.rawQuery('SELECT COUNT(*) FROM transactions'),
+        ) ??
+        0;
+
     final processedCount = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM processed_sms'),
-    ) ?? 0;
-    
+          await db.rawQuery('SELECT COUNT(*) FROM processed_sms'),
+        ) ??
+        0;
+
     final aiParsedCount = Sqflite.firstIntValue(
-      await db.rawQuery("SELECT COUNT(*) FROM transactions WHERE parsed_by = 'ai'"),
-    ) ?? 0;
+          await db.rawQuery(
+              "SELECT COUNT(*) FROM transactions WHERE parsed_by = 'ai'"),
+        ) ??
+        0;
 
     return {
       'transactions': txCount,
@@ -677,10 +698,9 @@ class LocalStorageService {
   /// Delete transactions older than specified days
   static Future<int> deleteOldTransactions(int daysOld) async {
     final db = await database;
-    final cutoff = DateTime.now()
-        .subtract(Duration(days: daysOld))
-        .millisecondsSinceEpoch;
-    
+    final cutoff =
+        DateTime.now().subtract(Duration(days: daysOld)).millisecondsSinceEpoch;
+
     return await db.delete(
       'transactions',
       where: 'date < ?',

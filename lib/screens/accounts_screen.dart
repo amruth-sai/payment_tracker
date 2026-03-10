@@ -23,13 +23,13 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
   Future<void> _loadAccounts() async {
     setState(() => _isLoading = true);
-    
+
     // First, auto-detect any new accounts from transactions
     await LocalStorageService.detectAccountsFromTransactions();
-    
+
     // Then load all accounts
     final accounts = await LocalStorageService.getAllAccounts();
-    
+
     setState(() {
       _accounts = accounts;
       _isLoading = false;
@@ -92,9 +92,13 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 
   Widget _buildAccountsList() {
-    final bankAccounts = _accounts.where((a) => a.type == AccountType.bankAccount).toList();
-    final creditCards = _accounts.where((a) => a.type == AccountType.creditCard).toList();
-    final wallets = _accounts.where((a) => a.type == AccountType.wallet || a.type == AccountType.upi).toList();
+    final bankAccounts =
+        _accounts.where((a) => a.type == AccountType.bankAccount).toList();
+    final creditCards =
+        _accounts.where((a) => a.type == AccountType.creditCard).toList();
+    final wallets = _accounts
+        .where((a) => a.type == AccountType.wallet || a.type == AccountType.upi)
+        .toList();
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 80),
@@ -125,8 +129,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
         ],
       ),
@@ -293,8 +297,10 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.account?.name ?? '');
-    _last4Controller = TextEditingController(text: widget.account?.last4Digits ?? '');
-    _bankNameController = TextEditingController(text: widget.account?.bankName ?? '');
+    _last4Controller =
+        TextEditingController(text: widget.account?.last4Digits ?? '');
+    _bankNameController =
+        TextEditingController(text: widget.account?.bankName ?? '');
     _selectedType = widget.account?.type ?? AccountType.bankAccount;
   }
 
@@ -391,11 +397,16 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
     }
 
     final account = Account(
-      id: widget.account?.id ?? 'manual_${DateTime.now().millisecondsSinceEpoch}',
+      id: widget.account?.id ??
+          'manual_${DateTime.now().millisecondsSinceEpoch}',
       name: _nameController.text.trim(),
       type: _selectedType,
-      last4Digits: _last4Controller.text.isNotEmpty ? _last4Controller.text.trim() : null,
-      bankName: _bankNameController.text.isNotEmpty ? _bankNameController.text.trim() : null,
+      last4Digits: _last4Controller.text.isNotEmpty
+          ? _last4Controller.text.trim()
+          : null,
+      bankName: _bankNameController.text.isNotEmpty
+          ? _bankNameController.text.trim()
+          : null,
       isManuallyAdded: true,
       createdAt: widget.account?.createdAt ?? DateTime.now(),
     );

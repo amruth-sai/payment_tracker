@@ -9,7 +9,8 @@ class SpendingBreakdownScreen extends StatefulWidget {
   const SpendingBreakdownScreen({super.key});
 
   @override
-  State<SpendingBreakdownScreen> createState() => _SpendingBreakdownScreenState();
+  State<SpendingBreakdownScreen> createState() =>
+      _SpendingBreakdownScreenState();
 }
 
 class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
@@ -40,23 +41,25 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
 
     // Calculate stats per account
     final stats = <String, _AccountStats>{};
-    
+
     for (final tx in transactions) {
       if (!_isInPeriod(tx.date)) continue;
-      
+
       final key = tx.accountLast4 ?? tx.sender;
-      
-      stats.putIfAbsent(key, () => _AccountStats(
-        key: key,
-        account: accounts.firstWhere(
-          (a) => a.last4Digits == tx.accountLast4,
-          orElse: () => Account(
-            id: 'unknown_$key',
-            name: tx.sender,
-            type: _guessAccountType(tx),
-          ),
-        ),
-      ));
+
+      stats.putIfAbsent(
+          key,
+          () => _AccountStats(
+                key: key,
+                account: accounts.firstWhere(
+                  (a) => a.last4Digits == tx.accountLast4,
+                  orElse: () => Account(
+                    id: 'unknown_$key',
+                    name: tx.sender,
+                    type: _guessAccountType(tx),
+                  ),
+                ),
+              ));
 
       if (tx.type == TransactionType.debit) {
         stats[key]!.totalSpent += tx.amount;
@@ -139,7 +142,8 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
 
   Widget _buildSummaryCard() {
     final totalSpent = _stats.values.fold(0.0, (sum, s) => sum + s.totalSpent);
-    final totalReceived = _stats.values.fold(0.0, (sum, s) => sum + s.totalReceived);
+    final totalReceived =
+        _stats.values.fold(0.0, (sum, s) => sum + s.totalReceived);
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -224,7 +228,8 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 children: [
                   CircleAvatar(
                     radius: 20,
-                    backgroundColor: _getAccountColor(account.type).withOpacity(0.2),
+                    backgroundColor:
+                        _getAccountColor(account.type).withOpacity(0.2),
                     child: Icon(
                       _getAccountIcon(account.type),
                       color: _getAccountColor(account.type),
@@ -281,7 +286,8 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 child: LinearProgressIndicator(
                   value: progress,
                   backgroundColor: Colors.grey[200],
-                  valueColor: AlwaysStoppedAnimation(_getAccountColor(account.type)),
+                  valueColor:
+                      AlwaysStoppedAnimation(_getAccountColor(account.type)),
                   minHeight: 6,
                 ),
               ),
@@ -336,7 +342,8 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: _getAccountColor(stat.account.type).withOpacity(0.2),
+                    backgroundColor:
+                        _getAccountColor(stat.account.type).withOpacity(0.2),
                     child: Icon(
                       _getAccountIcon(stat.account.type),
                       color: _getAccountColor(stat.account.type),
@@ -440,8 +447,20 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
   }
 
   String _formatDate(DateTime date) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 }

@@ -4,12 +4,12 @@ import 'transaction.dart';
 
 class SalaryCycle {
   final String id;
-  final DateTime startDate;       // Salary credit date
-  final DateTime? endDate;        // Next salary date (null if current cycle)
+  final DateTime startDate; // Salary credit date
+  final DateTime? endDate; // Next salary date (null if current cycle)
   final double salaryAmount;
   final String salaryTransactionId;
-  final String? employer;         // Extracted employer name
-  final List<Transaction> transactions;  // All transactions in this cycle
+  final String? employer; // Extracted employer name
+  final List<Transaction> transactions; // All transactions in this cycle
 
   SalaryCycle({
     required this.id,
@@ -36,7 +36,8 @@ class SalaryCycle {
 
   double get totalReceived {
     return transactions
-        .where((t) => t.type == TransactionType.credit && t.id != salaryTransactionId)
+        .where((t) =>
+            t.type == TransactionType.credit && t.id != salaryTransactionId)
         .fold(0.0, (sum, t) => sum + t.amount);
   }
 
@@ -50,8 +51,20 @@ class SalaryCycle {
   }
 
   String get cycleLabel {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     if (endDate != null) {
       return '${months[startDate.month - 1]} ${startDate.year}';
     }
@@ -69,11 +82,12 @@ class SalaryCycle {
     };
   }
 
-  factory SalaryCycle.fromMap(Map<String, dynamic> map, {List<Transaction>? transactions}) {
+  factory SalaryCycle.fromMap(Map<String, dynamic> map,
+      {List<Transaction>? transactions}) {
     return SalaryCycle(
       id: map['id'] as String,
       startDate: DateTime.fromMillisecondsSinceEpoch(map['start_date'] as int),
-      endDate: map['end_date'] != null 
+      endDate: map['end_date'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['end_date'] as int)
           : null,
       salaryAmount: map['salary_amount'] as double,
@@ -108,7 +122,8 @@ class SalaryCycle {
 class SalaryConfig {
   final List<String> employerKeywords;
   final double? minimumAmount;
-  final List<int> expectedDays;  // Expected salary days (e.g., [25, 26, 27, 28, 29, 30, 31, 1])
+  final List<int>
+      expectedDays; // Expected salary days (e.g., [25, 26, 27, 28, 29, 30, 31, 1])
 
   const SalaryConfig({
     this.employerKeywords = const ['HCA GLOBAL SERVICES', 'HCA', 'SALARY'],
@@ -126,12 +141,14 @@ class SalaryConfig {
 
   factory SalaryConfig.fromMap(Map<String, dynamic> map) {
     return SalaryConfig(
-      employerKeywords: (map['employer_keywords'] as String?)?.split(',') ?? ['SALARY'],
+      employerKeywords:
+          (map['employer_keywords'] as String?)?.split(',') ?? ['SALARY'],
       minimumAmount: map['minimum_amount'] as double?,
       expectedDays: (map['expected_days'] as String?)
-          ?.split(',')
-          .map((e) => int.tryParse(e) ?? 1)
-          .toList() ?? [25, 26, 27, 28, 29, 30, 31, 1],
+              ?.split(',')
+              .map((e) => int.tryParse(e) ?? 1)
+              .toList() ??
+          [25, 26, 27, 28, 29, 30, 31, 1],
     );
   }
 }

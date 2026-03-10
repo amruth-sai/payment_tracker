@@ -30,16 +30,23 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
     try {
       // Load existing salary cycles
       final cycles = await LocalStorageService.getAllSalaryCycles();
-      
+
       // Get potential salary transactions
-      final potential = await LocalStorageService.getPotentialSalaryTransactions(
-        employerKeywords: ['HCA', 'HCA GLOBAL', 'SALARY', 'HCA GLOBAL SERVICES'],
-        minimumAmount: 30000,  // Assume salary is at least 30k
+      final potential =
+          await LocalStorageService.getPotentialSalaryTransactions(
+        employerKeywords: [
+          'HCA',
+          'HCA GLOBAL',
+          'SALARY',
+          'HCA GLOBAL SERVICES'
+        ],
+        minimumAmount: 30000, // Assume salary is at least 30k
       );
 
       setState(() {
         _cycles = cycles;
-        _potentialSalaries = potential.take(20).toList();  // Show top 20 candidates
+        _potentialSalaries =
+            potential.take(20).toList(); // Show top 20 candidates
         _isLoading = false;
       });
     } catch (e) {
@@ -88,14 +95,15 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
               'Mark Your Salary Transactions',
               subtitle: 'Tap a transaction to mark it as salary',
               trailing: TextButton(
-                onPressed: () => setState(() => _showPotentialSalaries = !_showPotentialSalaries),
+                onPressed: () => setState(
+                    () => _showPotentialSalaries = !_showPotentialSalaries),
                 child: Text(_showPotentialSalaries ? 'Hide' : 'Show'),
               ),
             ),
             if (_showPotentialSalaries)
               ..._potentialSalaries.map(_buildPotentialSalaryTile),
           ],
-          
+
           // Existing cycles
           if (_cycles.isNotEmpty) ...[
             _buildSectionHeader(
@@ -192,7 +200,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, {String? subtitle, Widget? trailing}) {
+  Widget _buildSectionHeader(String title,
+      {String? subtitle, Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
       child: Row(
@@ -204,8 +213,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 if (subtitle != null)
                   Text(
@@ -299,7 +308,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: cycle.isCurrent
                           ? Colors.blue.withOpacity(0.2)
@@ -317,7 +327,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                   if (cycle.isCurrent) ...[
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.green.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(4),
@@ -380,7 +391,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                     '${spentPercentage.toStringAsFixed(0)}% spent',
                     style: TextStyle(
                       fontSize: 12,
-                      color: spentPercentage > 80 ? Colors.red : Colors.grey[600],
+                      color:
+                          spentPercentage > 80 ? Colors.red : Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -410,11 +422,11 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
 
   Future<void> _generateCyclesFromMarked() async {
     setState(() => _isLoading = true);
-    
+
     try {
       await LocalStorageService.generateSalaryCycles();
       await _loadData();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -438,7 +450,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Regenerate Cycles?'),
-        content: const Text('This will recreate all salary cycles based on marked transactions.'),
+        content: const Text(
+            'This will recreate all salary cycles based on marked transactions.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -475,8 +488,20 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
   }
 
   String _formatDate(DateTime date) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
@@ -549,7 +574,9 @@ class _CycleDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final debits = cycle.transactions.where((t) => t.isDebit).toList();
-    final credits = cycle.transactions.where((t) => t.isCredit && t.id != cycle.salaryTransactionId).toList();
+    final credits = cycle.transactions
+        .where((t) => t.isCredit && t.id != cycle.salaryTransactionId)
+        .toList();
 
     return Column(
       children: [
@@ -633,7 +660,8 @@ class _CycleDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildTransactionList(List<Transaction> transactions, ScrollController controller) {
+  Widget _buildTransactionList(
+      List<Transaction> transactions, ScrollController controller) {
     if (transactions.isEmpty) {
       return Center(
         child: Text(
@@ -673,8 +701,20 @@ class _CycleDetailSheet extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${date.day} ${months[date.month - 1]}';
   }
 

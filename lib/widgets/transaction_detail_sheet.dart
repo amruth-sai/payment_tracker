@@ -9,20 +9,21 @@ import '../services/local_storage_service.dart';
 class TransactionDetailSheet extends StatefulWidget {
   final Transaction tx;
   final Function(Transaction)? onTransactionUpdated;
-  
+
   const TransactionDetailSheet({
-    super.key, 
+    super.key,
     required this.tx,
     this.onTransactionUpdated,
   });
 
-  static void show(BuildContext context, Transaction tx, {Function(Transaction)? onUpdated}) {
+  static void show(BuildContext context, Transaction tx,
+      {Function(Transaction)? onUpdated}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => TransactionDetailSheet(
-        tx: tx, 
+        tx: tx,
         onTransactionUpdated: onUpdated,
       ),
     );
@@ -59,7 +60,8 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           // Handle
           const SizedBox(height: 12),
           Container(
-            width: 40, height: 4,
+            width: 40,
+            height: 4,
             decoration: BoxDecoration(
               color: theme.colorScheme.onSurfaceVariant.withOpacity(0.3),
               borderRadius: BorderRadius.circular(2),
@@ -69,8 +71,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
 
           // Amount hero
           Icon(
-            isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-            color: color, size: 36,
+            isCredit
+                ? Icons.arrow_downward_rounded
+                : Icons.arrow_upward_rounded,
+            color: color,
+            size: 36,
           ),
           const SizedBox(height: 8),
           Text(
@@ -93,7 +98,8 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               if (_tx.isUserCorrected) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.orange.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(4),
@@ -131,13 +137,21 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               children: [
-                _DetailRow('Date & Time', DateFormat('dd MMM yyyy, hh:mm a').format(_tx.date), theme),
+                _DetailRow('Date & Time',
+                    DateFormat('dd MMM yyyy, hh:mm a').format(_tx.date), theme),
                 _DetailRow('Via', _tx.sourceLabel, theme),
-                if (_tx.merchant != null) _DetailRow('Merchant', _tx.merchant!, theme),
-                if (_tx.accountLast4 != null) _DetailRow('Account', '••••${_tx.accountLast4}', theme),
+                if (_tx.merchant != null)
+                  _DetailRow('Merchant', _tx.merchant!, theme),
+                if (_tx.accountLast4 != null)
+                  _DetailRow('Account', '••••${_tx.accountLast4}', theme),
                 if (_tx.balance != null)
-                  _DetailRow('Balance After', '₹${NumberFormat('#,##,###.##').format(_tx.balance!)}', theme),
-                if (_tx.referenceId != null) _DetailRow('Reference ID', _tx.referenceId!, theme, copyable: true),
+                  _DetailRow(
+                      'Balance After',
+                      '₹${NumberFormat('#,##,###.##').format(_tx.balance!)}',
+                      theme),
+                if (_tx.referenceId != null)
+                  _DetailRow('Reference ID', _tx.referenceId!, theme,
+                      copyable: true),
               ],
             ),
           ),
@@ -186,9 +200,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             const Text('This transaction was detected as:'),
             const SizedBox(height: 8),
             Chip(
-              label: Text(_tx.isCredit ? 'Money In (Credit)' : 'Money Out (Debit)'),
-              backgroundColor: _tx.isCredit 
-                  ? Colors.green.withOpacity(0.2) 
+              label: Text(
+                  _tx.isCredit ? 'Money In (Credit)' : 'Money Out (Debit)'),
+              backgroundColor: _tx.isCredit
+                  ? Colors.green.withOpacity(0.2)
                   : Colors.red.withOpacity(0.2),
             ),
             const SizedBox(height: 16),
@@ -221,20 +236,20 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
 
   Future<void> _correctType(TransactionType newType) async {
     Navigator.pop(context); // Close dialog
-    
+
     final correctedTx = _tx.copyWith(
       type: newType,
       isUserCorrected: true,
     );
-    
+
     await LocalStorageService.updateTransaction(correctedTx);
-    
+
     setState(() {
       _tx = correctedTx;
     });
-    
+
     widget.onTransactionUpdated?.call(correctedTx);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -271,7 +286,8 @@ class _DetailRow extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
               if (copyable) ...[
                 const SizedBox(width: 4),
@@ -279,10 +295,13 @@ class _DetailRow extends StatelessWidget {
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: value));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied!'), duration: Duration(seconds: 1)),
+                      const SnackBar(
+                          content: Text('Copied!'),
+                          duration: Duration(seconds: 1)),
                     );
                   },
-                  child: Icon(Icons.copy_rounded, size: 14, color: theme.colorScheme.primary),
+                  child: Icon(Icons.copy_rounded,
+                      size: 14, color: theme.colorScheme.primary),
                 ),
               ],
             ],

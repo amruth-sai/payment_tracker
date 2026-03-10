@@ -9,16 +9,16 @@ class Transaction {
   final double amount;
   final TransactionType type;
   final PaymentSource source;
-  final String sender;       // bank/UPI sender name
-  final String? merchant;    // merchant name if available
+  final String sender; // bank/UPI sender name
+  final String? merchant; // merchant name if available
   final String? accountLast4;
   final DateTime date;
   final String rawMessage;
   final String? referenceId;
-  final double? balance;     // available balance after txn
-  final String? accountId;   // Link to Account
-  final bool isUserCorrected;  // User manually corrected this transaction
-  final bool isSalary;       // Marked as salary by user
+  final double? balance; // available balance after txn
+  final String? accountId; // Link to Account
+  final bool isUserCorrected; // User manually corrected this transaction
+  final bool isSalary; // Marked as salary by user
 
   Transaction({
     required this.id,

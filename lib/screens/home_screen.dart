@@ -47,9 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const CircularProgressIndicator(),
                   const SizedBox(height: 16),
-                  Text(sms.loadingStatus.isNotEmpty 
-                    ? sms.loadingStatus 
-                    : 'Reading your messages...'),
+                  Text(sms.loadingStatus.isNotEmpty
+                      ? sms.loadingStatus
+                      : 'Reading your messages...'),
                   if (sms.cachedCount > 0) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -102,15 +102,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text(
                             'Recent Transactions',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                           TextButton(
                             onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => AllTransactionsScreen(filter: _selectedFilter),
+                                builder: (_) => AllTransactionsScreen(
+                                    filter: _selectedFilter),
                               ),
                             ),
                             child: const Text('See All'),
@@ -123,7 +127,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => TransactionCard(
                         tx: recent[i],
-                        onTap: () => TransactionDetailSheet.show(context, recent[i]),
+                        onTap: () =>
+                            TransactionDetailSheet.show(context, recent[i]),
                       ),
                       childCount: recent.length,
                     ),
@@ -140,7 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildAppBar(BuildContext context) {
     // ignore: unused_local_variable
-    final _ = context.watch<SmsService>(); // Trigger rebuild when AI status changes
+    final _ =
+        context.watch<SmsService>(); // Trigger rebuild when AI status changes
     return SliverAppBar(
       floating: true,
       snap: true,
@@ -163,7 +169,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Icon(Icons.auto_awesome, size: 12, color: Colors.amber),
                   SizedBox(width: 2),
-                  Text('AI', style: TextStyle(fontSize: 10, color: Colors.amber)),
+                  Text('AI',
+                      style: TextStyle(fontSize: 10, color: Colors.amber)),
                 ],
               ),
             ),
@@ -214,7 +221,8 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.purple,
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const SpendingBreakdownScreen()),
+              MaterialPageRoute(
+                  builder: (_) => const SpendingBreakdownScreen()),
             ),
           ),
           const SizedBox(width: 12),

@@ -39,11 +39,9 @@ class SmsService extends ChangeNotifier {
   List<Transaction> get debits =>
       _transactions.where((t) => t.isDebit).toList();
 
-  double get totalCredits =>
-      credits.fold(0, (sum, t) => sum + t.amount);
+  double get totalCredits => credits.fold(0, (sum, t) => sum + t.amount);
 
-  double get totalDebits =>
-      debits.fold(0, (sum, t) => sum + t.amount);
+  double get totalDebits => debits.fold(0, (sum, t) => sum + t.amount);
 
   Future<bool> requestPermission() async {
     final status = await Permission.sms.request();
@@ -59,7 +57,8 @@ class SmsService extends ChangeNotifier {
   }
 
   /// Load transactions - uses cache first, then parses only new SMS
-  Future<void> loadTransactions({int daysBack = 90, bool forceRefresh = false}) async {
+  Future<void> loadTransactions(
+      {int daysBack = 90, bool forceRefresh = false}) async {
     _isLoading = true;
     _error = null;
     _aiParsedCount = 0;
@@ -84,7 +83,7 @@ class SmsService extends ChangeNotifier {
       // Step 2: Request SMS permission
       _loadingStatus = 'Checking permissions...';
       notifyListeners();
-      
+
       final granted = await _telephony.requestPhoneAndSmsPermissions;
       if (granted == null || !granted) {
         _error = 'SMS permission denied. Please grant it in Settings.';
@@ -100,7 +99,7 @@ class SmsService extends ChangeNotifier {
       // Step 4: Get already processed SMS IDs
       _loadingStatus = 'Checking for new messages...';
       notifyListeners();
-      
+
       final processedIds = await LocalStorageService.getProcessedSmsIds();
 
       final cutoff = DateTime.now().subtract(Duration(days: daysBack));
@@ -108,14 +107,26 @@ class SmsService extends ChangeNotifier {
 
       // Step 5: Fetch SMS from inbox
       final inbox = await _telephony.getInboxSms(
-        columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE, SmsColumn.ID],
-        filter: SmsFilter.where(SmsColumn.DATE).greaterThan(cutoffMs.toString()),
+        columns: [
+          SmsColumn.ADDRESS,
+          SmsColumn.BODY,
+          SmsColumn.DATE,
+          SmsColumn.ID
+        ],
+        filter:
+            SmsFilter.where(SmsColumn.DATE).greaterThan(cutoffMs.toString()),
         sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
       );
 
       final sent = await _telephony.getSentSms(
-        columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE, SmsColumn.ID],
-        filter: SmsFilter.where(SmsColumn.DATE).greaterThan(cutoffMs.toString()),
+        columns: [
+          SmsColumn.ADDRESS,
+          SmsColumn.BODY,
+          SmsColumn.DATE,
+          SmsColumn.ID
+        ],
+        filter:
+            SmsFilter.where(SmsColumn.DATE).greaterThan(cutoffMs.toString()),
         sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
       );
 
@@ -157,7 +168,7 @@ class SmsService extends ChangeNotifier {
           if (AiSmsParser.mightBeTransaction(body)) {
             _loadingStatus = 'AI parsing ${i + 1}/${newSms.length}...';
             notifyListeners();
-            
+
             tx = await AiSmsParser.parse(body, sender, date, id);
             if (tx != null) {
               _aiParsedCount++;

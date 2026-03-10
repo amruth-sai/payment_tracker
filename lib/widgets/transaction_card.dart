@@ -39,7 +39,9 @@ class TransactionCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
-                  isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                  isCredit
+                      ? Icons.arrow_downward_rounded
+                      : Icons.arrow_upward_rounded,
                   color: color,
                   size: 22,
                 ),
@@ -62,7 +64,9 @@ class TransactionCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        _Chip(label: tx.sourceLabel, color: theme.colorScheme.primary),
+                        _Chip(
+                            label: tx.sourceLabel,
+                            color: theme.colorScheme.primary),
                         if (tx.accountLast4 != null) ...[
                           const SizedBox(width: 6),
                           Text(
