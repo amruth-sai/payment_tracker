@@ -3,8 +3,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/transaction.dart';
+import '../models/custom_category.dart';
 import '../services/local_storage_service.dart';
+import '../services/sms_service.dart';
 
 class TransactionDetailSheet extends StatefulWidget {
   final Transaction tx;
@@ -35,11 +38,30 @@ class TransactionDetailSheet extends StatefulWidget {
 
 class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   late Transaction _tx;
+  List<CustomCategory> _customCategories = [];
+  CustomCategory? _selectedCustomCategory;
 
   @override
   void initState() {
     super.initState();
     _tx = widget.tx;
+    _loadCustomCategories();
+  }
+
+  Future<void> _loadCustomCategories() async {
+    final cats = await LocalStorageService.getAllCustomCategories();
+    CustomCategory? current;
+    if (_tx.customCategoryId != null) {
+      try {
+        current = cats.firstWhere((c) => c.id == _tx.customCategoryId);
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _customCategories = cats;
+        _selectedCustomCategory = current;
+      });
+    }
   }
 
   @override
@@ -130,42 +152,168 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
 
-          // Category badge
-          if (_tx.category != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_tx.category!.emoji,
-                            style: const TextStyle(fontSize: 16)),
-                        const SizedBox(width: 6),
-                        Text(
-                          _tx.category!.displayName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color:
-                                theme.colorScheme.onPrimaryContainer,
-                          ),
+          // Ignore toggle (Feature 2)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Material(
+              color: _tx.isIgnored
+                  ? Colors.orange.withValues(alpha: 0.08)
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _toggleIgnore,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _tx.isIgnored
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        size: 20,
+                        color: _tx.isIgnored ? Colors.orange : Colors.grey,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _tx.isIgnored
+                                  ? 'Ignored'
+                                  : 'Track this transaction',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _tx.isIgnored
+                                    ? Colors.orange
+                                    : null,
+                              ),
+                            ),
+                            Text(
+                              _tx.isIgnored
+                                  ? 'Not included in any summaries'
+                                  : 'Tap to exclude from summaries',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      Switch(
+                        value: !_tx.isIgnored,
+                        onChanged: (_) => _toggleIgnore(),
+                        activeThumbColor: Colors.green,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
+          ),
+          const SizedBox(height: 16),
+
+          // Category badge - clickable to change (Feature 3)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                // Built-in or custom category
+                if (_selectedCustomCategory != null)
+                  _CategoryBadge(
+                    emoji: _selectedCustomCategory!.emoji,
+                    label: _selectedCustomCategory!.name,
+                    color: _selectedCustomCategory!.color,
+                    onTap: _showCategoryPicker,
+                  )
+                else if (_tx.category != null)
+                  _CategoryBadge(
+                    emoji: _tx.category!.emoji,
+                    label: _tx.category!.displayName,
+                    color: Theme.of(context).colorScheme.primary,
+                    onTap: _showCategoryPicker,
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _showCategoryPicker,
+                    icon: const Icon(Icons.label_outline, size: 16),
+                    label: const Text('Assign Category'),
+                    style: OutlinedButton.styleFrom(
+                      textStyle: const TextStyle(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Tag row (Feature 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: InkWell(
+              onTap: _showTagEditor,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _tx.tag != null && _tx.tag!.isNotEmpty
+                          ? Icons.bookmark
+                          : Icons.bookmark_border,
+                      size: 18,
+                      color: _tx.tag != null && _tx.tag!.isNotEmpty
+                          ? Theme.of(context).colorScheme.secondary
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _tx.tag != null && _tx.tag!.isNotEmpty
+                            ? _tx.tag!
+                            : 'Add a tag (e.g. reimbursable, split...)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle:
+                              _tx.tag == null || _tx.tag!.isEmpty
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
+                          color:
+                              _tx.tag != null && _tx.tag!.isNotEmpty
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.edit, size: 14, color: Colors.grey[400]),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
 
           // Personal Note
@@ -383,6 +531,124 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
       ),
     );
   }
+
+  // Feature 1: Tag editor
+  void _showTagEditor() {
+    final controller = TextEditingController(text: _tx.tag ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tag'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 40,
+          decoration: const InputDecoration(
+            hintText: 'e.g. reimbursable, split, work...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          if (_tx.tag != null && _tx.tag!.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await LocalStorageService.updateTransactionTag(_tx.id, null);
+                final updated = _tx.copyWith(clearTag: true);
+                setState(() => _tx = updated);
+                widget.onTransactionUpdated?.call(updated);
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+            ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final tag = controller.text.trim();
+              await LocalStorageService.updateTransactionTag(
+                  _tx.id, tag.isEmpty ? null : tag);
+              final updated = tag.isEmpty
+                  ? _tx.copyWith(clearTag: true)
+                  : _tx.copyWith(tag: tag);
+              setState(() => _tx = updated);
+              widget.onTransactionUpdated?.call(updated);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Feature 2: Toggle ignore
+  Future<void> _toggleIgnore() async {
+    final newIgnored = !_tx.isIgnored;
+    await LocalStorageService.updateTransactionIgnored(_tx.id, newIgnored);
+    final updated = _tx.copyWith(isIgnored: newIgnored);
+    setState(() => _tx = updated);
+    widget.onTransactionUpdated?.call(updated);
+    // Refresh in-memory list so home screen summary updates
+    if (mounted) {
+      context.read<SmsService>().reloadFromCache();
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(newIgnored
+            ? 'Transaction ignored — excluded from summaries'
+            : 'Transaction restored — included in summaries'),
+        backgroundColor: newIgnored ? Colors.orange : Colors.green,
+      ));
+    }
+  }
+
+  // Feature 3: Category picker (built-in + custom)
+  void _showCategoryPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => _CategoryPickerSheet(
+        currentBuiltIn: _tx.category,
+        currentCustomId: _tx.customCategoryId,
+        customCategories: _customCategories,
+        onBuiltInSelected: (cat) async {
+          await LocalStorageService.updateTransactionCategory(_tx.id, cat);
+          await LocalStorageService.updateTransactionCustomCategory(
+              _tx.id, null);
+          final updated =
+              _tx.copyWith(category: cat, clearCustomCategory: true);
+          setState(() {
+            _tx = updated;
+            _selectedCustomCategory = null;
+          });
+          widget.onTransactionUpdated?.call(updated);
+        },
+        onCustomSelected: (custom) async {
+          await LocalStorageService.updateTransactionCustomCategory(
+              _tx.id, custom.id);
+          final updated = _tx.copyWith(customCategoryId: custom.id);
+          setState(() {
+            _tx = updated;
+            _selectedCustomCategory = custom;
+          });
+          widget.onTransactionUpdated?.call(updated);
+        },
+        onClearCategory: () async {
+          await LocalStorageService.updateTransactionCustomCategory(
+              _tx.id, null);
+          final updated = _tx.copyWith(clearCustomCategory: true);
+          setState(() {
+            _tx = updated;
+            _selectedCustomCategory = null;
+          });
+          widget.onTransactionUpdated?.call(updated);
+        },
+      ),
+    );
+  }
 }
 
 class _DetailRow extends StatelessWidget {
@@ -429,6 +695,244 @@ class _DetailRow extends StatelessWidget {
                 ),
               ],
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Feature 3: Tappable category badge
+class _CategoryBadge extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _CategoryBadge({
+    required this.emoji,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color.withValues(alpha: 0.9),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.expand_more, size: 14, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Feature 3: Sheet showing built-in + custom categories to pick from
+class _CategoryPickerSheet extends StatelessWidget {
+  final TransactionCategory? currentBuiltIn;
+  final String? currentCustomId;
+  final List<CustomCategory> customCategories;
+  final void Function(TransactionCategory) onBuiltInSelected;
+  final void Function(CustomCategory) onCustomSelected;
+  final VoidCallback onClearCategory;
+
+  const _CategoryPickerSheet({
+    required this.currentBuiltIn,
+    required this.currentCustomId,
+    required this.customCategories,
+    required this.onBuiltInSelected,
+    required this.onCustomSelected,
+    required this.onClearCategory,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (ctx, sc) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Choose Category',
+                        style: theme.textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.bold)),
+                    if (currentBuiltIn != null || currentCustomId != null)
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          onClearCategory();
+                        },
+                        child: const Text('Clear',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              controller: sc,
+              padding: const EdgeInsets.all(12),
+              children: [
+                // Custom categories section
+                if (customCategories.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+                    child: Text('My Categories',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.primary)),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: customCategories.map((cat) {
+                      final isSelected = cat.id == currentCustomId;
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onCustomSelected(cat);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? cat.color.withValues(alpha: 0.25)
+                                : cat.color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: cat.color
+                                  .withValues(alpha: isSelected ? 0.8 : 0.3),
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(cat.emoji,
+                                  style: const TextStyle(fontSize: 16)),
+                              const SizedBox(width: 6),
+                              Text(cat.name,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: cat.color,
+                                  )),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                ],
+
+                // Built-in categories
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                  child: Text('Standard Categories',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant)),
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: TransactionCategory.values.map((cat) {
+                    final isSelected =
+                        currentCustomId == null && cat == currentBuiltIn;
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onBuiltInSelected(cat);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? theme.colorScheme.primaryContainer
+                              : theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outline
+                                    .withValues(alpha: 0.3),
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(cat.emoji,
+                                style: const TextStyle(fontSize: 16)),
+                            const SizedBox(width: 6),
+                            Text(cat.displayName,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.normal,
+                                  color: isSelected
+                                      ? theme.colorScheme.onPrimaryContainer
+                                      : null,
+                                )),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ],
       ),

@@ -13,6 +13,7 @@ class SmsService extends ChangeNotifier {
   final Telephony _telephony = Telephony.instance;
 
   List<Transaction> _transactions = [];
+  List<Transaction> _newlyFoundTransactions = []; // Feature 6: for review popup
   bool _isLoading = false;
   bool _hasPermission = false;
   String? _error;
@@ -24,6 +25,7 @@ class SmsService extends ChangeNotifier {
   String _loadingStatus = '';
 
   List<Transaction> get transactions => _transactions;
+  List<Transaction> get newlyFoundTransactions => _newlyFoundTransactions;
   bool get isLoading => _isLoading;
   bool get hasPermission => _hasPermission;
   String? get error => _error;
@@ -43,6 +45,29 @@ class SmsService extends ChangeNotifier {
   double get totalCredits => credits.fold(0, (sum, t) => sum + t.amount);
 
   double get totalDebits => debits.fold(0, (sum, t) => sum + t.amount);
+
+  // Feature 5: Current-month getters
+  List<Transaction> get currentMonthTransactions {
+    final now = DateTime.now();
+    return _transactions
+        .where((t) =>
+            t.date.year == now.year && t.date.month == now.month)
+        .toList();
+  }
+
+  double get currentMonthCredits => currentMonthTransactions
+      .where((t) => t.isCredit)
+      .fold(0.0, (sum, t) => sum + t.amount);
+
+  double get currentMonthDebits => currentMonthTransactions
+      .where((t) => t.isDebit)
+      .fold(0.0, (sum, t) => sum + t.amount);
+
+  /// Feature 6: Call this after the review popup has been handled
+  void clearNewlyFoundTransactions() {
+    _newlyFoundTransactions = [];
+    notifyListeners();
+  }
 
   Future<bool> requestPermission() async {
     final status = await Permission.sms.request();
@@ -72,7 +97,7 @@ class SmsService extends ChangeNotifier {
     try {
       // Step 1: Load cached transactions first (instant display!)
       if (!forceRefresh) {
-        final cached = await LocalStorageService.getAllTransactions();
+        final cached = await _getFilteredTransactions();
         if (cached.isNotEmpty) {
           _transactions = cached;
           _cachedCount = cached.length;
@@ -207,11 +232,12 @@ class SmsService extends ChangeNotifier {
       }
 
       _newlyParsedCount = newTransactions.length;
+      _newlyFoundTransactions = List.unmodifiable(newTransactions); // Feature 6
 
       // Step 8: Merge new transactions with cached ones
       if (newTransactions.isNotEmpty) {
         // Reload all from cache to get sorted & deduplicated list
-        _transactions = await LocalStorageService.getAllTransactions();
+        _transactions = await _getFilteredTransactions();
       }
 
       _loadingStatus = 'Done! $_newlyParsedCount new transactions found';
@@ -251,5 +277,36 @@ class SmsService extends ChangeNotifier {
       map[key] = (map[key] ?? 0) + tx.amount;
     }
     return map;
+  }
+
+  /// Feature 4: Load all transactions applying trackFromDate + isIgnored filters
+  Future<List<Transaction>> _getFilteredTransactions() async {
+    final trackFromDate = await LocalStorageService.getTrackFromDate();
+    final trackFromTxId = await LocalStorageService.getTrackFromTransactionId();
+
+    List<Transaction> all;
+    if (trackFromDate != null) {
+      all = await LocalStorageService.getTransactionsSince(trackFromDate);
+    } else {
+      all = await LocalStorageService.getAllTransactions();
+    }
+
+    // If trackFromTransactionId is set, trim list to start from that txn
+    if (trackFromTxId != null && trackFromTxId.isNotEmpty) {
+      final idx = all.indexWhere((t) => t.id == trackFromTxId);
+      if (idx != -1) {
+        // all is sorted DESC by date; transactions at idx and after are older
+        all = all.sublist(0, idx + 1);
+      }
+    }
+
+    // Feature 2: exclude ignored transactions from active lists
+    return all.where((t) => !t.isIgnored).toList();
+  }
+
+  /// Feature 4: Re-apply tracking filters and refresh in-memory list
+  Future<void> reloadFromCache() async {
+    _transactions = await _getFilteredTransactions();
+    notifyListeners();
   }
 }

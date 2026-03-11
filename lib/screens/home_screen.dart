@@ -1,6 +1,7 @@
 // lib/screens/home_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
 import '../services/ai_sms_parser.dart';
@@ -8,6 +9,7 @@ import '../models/transaction.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
+import '../widgets/new_transactions_review_sheet.dart';
 import 'all_transactions_screen.dart';
 import 'settings_screen.dart';
 import 'accounts_screen.dart';
@@ -19,6 +21,8 @@ import 'spending_heatmap_screen.dart';
 import 'merchant_rankings_screen.dart';
 import 'emi_tracker_screen.dart';
 import 'alerts_screen.dart';
+import 'custom_categories_screen.dart';
+import 'tracking_settings_screen.dart';
 import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -39,8 +43,19 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final sms = context.read<SmsService>();
       await sms.initializeAI(); // Load AI if API key exists
-      sms.loadTransactions();
+      await sms.loadTransactions();
       _loadAlertCount();
+      // Feature 6: show review popup if new transactions were found
+      if (mounted && sms.newlyFoundTransactions.isNotEmpty) {
+        await NewTransactionsReviewSheet.show(
+          context,
+          transactions: sms.newlyFoundTransactions,
+          onDone: () {
+            sms.clearNewlyFoundTransactions();
+            sms.reloadFromCache();
+          },
+        );
+      }
     });
   }
 
@@ -99,9 +114,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 SliverToBoxAdapter(child: _buildQuickActions()),
                 SliverToBoxAdapter(
                   child: SummaryCard(
-                    totalIn: sms.totalCredits,
-                    totalOut: sms.totalDebits,
-                    txCount: sms.transactions.length,
+                    totalIn: sms.currentMonthCredits,
+                    totalOut: sms.currentMonthDebits,
+                    txCount: sms.currentMonthTransactions.length,
+                    subtitle: DateFormat('MMMM yyyy').format(DateTime.now()),
                   ),
                 ),
                 SliverToBoxAdapter(child: _buildFilterRow()),
@@ -117,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Recent Transactions',
+                            'This Month',
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -348,6 +364,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          // Row 3 - New feature buttons (Features 3 & 4)
+          Row(
+            children: [
+              _QuickActionButton(
+                icon: Icons.label_outline,
+                label: 'My Labels',
+                color: Colors.teal,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const CustomCategoriesScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _QuickActionButton(
+                icon: Icons.history_toggle_off_outlined,
+                label: 'Tracking',
+                color: Colors.blueGrey,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const TrackingSettingsScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(child: SizedBox()), // spacer
+              const SizedBox(width: 8),
+              const Expanded(child: SizedBox()), // spacer
+            ],
+          ),
           // Alerts banner
           if (_unreadAlertCount > 0)
             Padding(
@@ -416,13 +463,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Transaction> _getFiltered(SmsService sms) {
+    // Feature 5: base is current month transactions
+    final base = sms.currentMonthTransactions;
     switch (_selectedFilter) {
       case 1:
-        return sms.credits;
+        return base.where((t) => t.isCredit).toList();
       case 2:
-        return sms.debits;
+        return base.where((t) => t.isDebit).toList();
       default:
-        return sms.transactions;
+        return base;
     }
   }
 }

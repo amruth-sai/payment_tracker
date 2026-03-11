@@ -109,6 +109,9 @@ class Transaction {
   final bool isSalary; // Marked as salary by user
   final TransactionCategory? category; // Auto or manually tagged category
   final String? note; // User-added personal note
+  final String? tag; // Feature 1: User-defined label (e.g. "reimbursable", "split")
+  final bool isIgnored; // Feature 2: If true, excluded from all summaries
+  final String? customCategoryId; // Feature 3: Links to a user-created custom category
 
   Transaction({
     required this.id,
@@ -127,6 +130,9 @@ class Transaction {
     this.isSalary = false,
     this.category,
     this.note,
+    this.tag,
+    this.isIgnored = false,
+    this.customCategoryId,
   });
 
   bool get isCredit => type == TransactionType.credit;
@@ -168,6 +174,13 @@ class Transaction {
     bool? isSalary,
     TransactionCategory? category,
     String? note,
+    String? tag,
+    bool? isIgnored,
+    String? customCategoryId,
+    // Sentinels to explicitly clear nullable fields
+    bool clearNote = false,
+    bool clearTag = false,
+    bool clearCustomCategory = false,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -185,7 +198,10 @@ class Transaction {
       isUserCorrected: isUserCorrected ?? this.isUserCorrected,
       isSalary: isSalary ?? this.isSalary,
       category: category ?? this.category,
-      note: note ?? this.note,
+      note: clearNote ? null : (note ?? this.note),
+      tag: clearTag ? null : (tag ?? this.tag),
+      isIgnored: isIgnored ?? this.isIgnored,
+      customCategoryId: clearCustomCategory ? null : (customCategoryId ?? this.customCategoryId),
     );
   }
 }

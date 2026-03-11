@@ -7,13 +7,14 @@ import '../models/account.dart';
 import '../models/salary_cycle.dart';
 import '../models/budget.dart';
 import '../models/app_alert.dart';
+import '../models/custom_category.dart';
 
 /// Local SQLite database for caching parsed transactions
 /// Avoids re-parsing already processed SMS messages
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 3; // v3: categories, notes, budgets, alerts, EMIs
+  static const int _dbVersion = 4; // v4: tag, isIgnored, customCategoryId, custom_categories table
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -56,6 +57,9 @@ class LocalStorageService {
         is_salary INTEGER DEFAULT 0,
         category TEXT,
         note TEXT,
+        tag TEXT,
+        is_ignored INTEGER DEFAULT 0,
+        custom_category_id TEXT,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -140,6 +144,17 @@ class LocalStorageService {
         total_detected INTEGER NOT NULL,
         estimated_total INTEGER,
         is_active INTEGER DEFAULT 1
+      )
+    ''');
+
+    // Table for user-created custom categories (Feature 3)
+    await db.execute('''
+      CREATE TABLE custom_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        emoji TEXT NOT NULL DEFAULT '🏷️',
+        color_value INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
       )
     ''');
 
@@ -259,6 +274,29 @@ class LocalStorageService {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(is_read)');
     }
+    if (oldVersion < 4) {
+      // Add tag, is_ignored, custom_category_id columns to transactions
+      await db.execute('ALTER TABLE transactions ADD COLUMN tag TEXT');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN is_ignored INTEGER DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN custom_category_id TEXT');
+
+      // Create custom_categories table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS custom_categories (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          emoji TEXT NOT NULL DEFAULT '🏷️',
+          color_value INTEGER NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+
+      // Index on is_ignored for fast filtering
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_ignored ON transactions(is_ignored)');
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -289,6 +327,9 @@ class LocalStorageService {
         'is_salary': tx.isSalary ? 1 : 0,
         'category': tx.category?.name,
         'note': tx.note,
+        'tag': tx.tag,
+        'is_ignored': tx.isIgnored ? 1 : 0,
+        'custom_category_id': tx.customCategoryId,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -323,6 +364,9 @@ class LocalStorageService {
           'is_salary': tx.isSalary ? 1 : 0,
           'category': tx.category?.name,
           'note': tx.note,
+          'tag': tx.tag,
+          'is_ignored': tx.isIgnored ? 1 : 0,
+          'custom_category_id': tx.customCategoryId,
           'created_at': DateTime.now().millisecondsSinceEpoch,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -346,6 +390,9 @@ class LocalStorageService {
         'is_salary': tx.isSalary ? 1 : 0,
         'category': tx.category?.name,
         'note': tx.note,
+        'tag': tx.tag,
+        'is_ignored': tx.isIgnored ? 1 : 0,
+        'custom_category_id': tx.customCategoryId,
       },
       where: 'id = ?',
       whereArgs: [tx.id],
@@ -409,6 +456,9 @@ class LocalStorageService {
             )
           : null,
       note: row['note'] as String?,
+      tag: row['tag'] as String?,
+      isIgnored: (row['is_ignored'] as int?) == 1,
+      customCategoryId: row['custom_category_id'] as String?,
     );
   }
 
@@ -964,6 +1014,123 @@ class LocalStorageService {
       where: 'id = ?',
       whereArgs: [txId],
     );
+  }
+
+  /// Update transaction tag (Feature 1)
+  static Future<void> updateTransactionTag(String txId, String? tag) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'tag': tag},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Update transaction ignored status (Feature 2)
+  static Future<void> updateTransactionIgnored(
+      String txId, bool isIgnored) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'is_ignored': isIgnored ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Update transaction custom category (Feature 3)
+  static Future<void> updateTransactionCustomCategory(
+      String txId, String? customCategoryId) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'custom_category_id': customCategoryId},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  // ==================== CUSTOM CATEGORY OPERATIONS (Feature 3) ====================
+
+  /// Get all user-created custom categories
+  static Future<List<CustomCategory>> getAllCustomCategories() async {
+    final db = await database;
+    final rows =
+        await db.query('custom_categories', orderBy: 'created_at ASC');
+    return rows.map((r) => CustomCategory.fromMap(r)).toList();
+  }
+
+  /// Save (insert or replace) a custom category
+  static Future<void> saveCustomCategory(CustomCategory cat) async {
+    final db = await database;
+    await db.insert(
+      'custom_categories',
+      cat.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Delete a custom category and unlink from transactions
+  static Future<void> deleteCustomCategory(String catId) async {
+    final db = await database;
+    await db.delete('custom_categories', where: 'id = ?', whereArgs: [catId]);
+    await db.update(
+      'transactions',
+      {'custom_category_id': null},
+      where: 'custom_category_id = ?',
+      whereArgs: [catId],
+    );
+  }
+
+  // ==================== TRACKING SETTINGS HELPERS (Feature 4) ====================
+
+  /// Get the tracking start date (null = no restriction)
+  static Future<DateTime?> getTrackFromDate() async {
+    final val = await getSetting('track_from_date');
+    if (val == null) return null;
+    final ms = int.tryParse(val);
+    return ms != null ? DateTime.fromMillisecondsSinceEpoch(ms) : null;
+  }
+
+  /// Save the tracking start date
+  static Future<void> setTrackFromDate(DateTime? date) async {
+    if (date == null) {
+      final db = await database;
+      await db.delete('user_settings',
+          where: 'key = ?', whereArgs: ['track_from_date']);
+    } else {
+      await setSetting(
+          'track_from_date', date.millisecondsSinceEpoch.toString());
+    }
+  }
+
+  /// Get the tracking start transaction ID (null = no restriction)
+  static Future<String?> getTrackFromTransactionId() async {
+    return getSetting('track_from_transaction_id');
+  }
+
+  /// Save the tracking start transaction ID
+  static Future<void> setTrackFromTransactionId(String? txId) async {
+    if (txId == null) {
+      final db = await database;
+      await db.delete('user_settings',
+          where: 'key = ?', whereArgs: ['track_from_transaction_id']);
+    } else {
+      await setSetting('track_from_transaction_id', txId);
+    }
+  }
+
+  /// Get all transactions at or after the given date (used with tracking settings)
+  static Future<List<Transaction>> getTransactionsSince(DateTime from) async {
+    final db = await database;
+    final rows = await db.query(
+      'transactions',
+      where: 'date >= ?',
+      whereArgs: [from.millisecondsSinceEpoch],
+      orderBy: 'date DESC',
+    );
+    return rows.map(_rowToTransaction).toList();
   }
 
   /// Batch update categories for uncategorized transactions

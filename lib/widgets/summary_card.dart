@@ -7,12 +7,14 @@ class SummaryCard extends StatelessWidget {
   final double totalIn;
   final double totalOut;
   final int txCount;
+  final String? subtitle; // Optional period label shown in the card header
 
   const SummaryCard({
     super.key,
     required this.totalIn,
     required this.totalOut,
     required this.txCount,
+    this.subtitle,
   });
 
   @override
@@ -42,7 +44,7 @@ class SummaryCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'This Period',
+                subtitle ?? 'This Period',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimaryContainer,
                 ),
