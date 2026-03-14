@@ -10,6 +10,7 @@ import '../widgets/transaction_card.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
 import '../widgets/new_transactions_review_sheet.dart';
+import '../widgets/tracking_onboarding_sheet.dart';
 import 'all_transactions_screen.dart';
 import 'settings_screen.dart';
 import 'accounts_screen.dart';
@@ -36,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedFilter = 0; // 0=All, 1=In, 2=Out
   final _filters = ['All', 'Money In', 'Money Out'];
   int _unreadAlertCount = 0;
+  String? _selectedBank; // null = All Banks
 
   @override
   void initState() {
@@ -43,6 +45,15 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final sms = context.read<SmsService>();
       await sms.initializeAI(); // Load AI if API key exists
+
+      // Check if user has completed onboarding (tracking start point)
+      final hasOnboarded = await LocalStorageService.hasCompletedOnboarding();
+      if (!hasOnboarded && mounted) {
+        // Show onboarding sheet before parsing any messages
+        await TrackingOnboardingSheet.show(context);
+      }
+
+      if (!mounted) return;
       await sms.loadTransactions();
       _loadAlertCount();
       // Feature 6: show review popup if new transactions were found
@@ -120,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     subtitle: DateFormat('MMMM yyyy').format(DateTime.now()),
                   ),
                 ),
-                SliverToBoxAdapter(child: _buildFilterRow()),
+                SliverToBoxAdapter(child: _buildFilterRow(sms)),
                 if (sms.transactions.isEmpty)
                   const SliverFillRemaining(
                     child: Center(child: Text('No payment messages found.')),
@@ -161,6 +172,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         tx: recent[i],
                         onTap: () =>
                             TransactionDetailSheet.show(context, recent[i]),
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
+                        onSwipeToggleType: (tx) =>
+                            _handleSwipeToggleType(context, tx),
                       ),
                       childCount: recent.length,
                     ),
@@ -443,28 +457,86 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildFilterRow() {
+  /// Extract unique bank/sender names from current month transactions
+  List<String> _getUniqueBanks(SmsService sms) {
+    final banks = <String>{};
+    for (final tx in sms.currentMonthTransactions) {
+      final name = tx.sender.trim();
+      if (name.isNotEmpty) banks.add(name);
+    }
+    final sorted = banks.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return sorted;
+  }
+
+  Widget _buildFilterRow(SmsService sms) {
+    final banks = _getUniqueBanks(sms);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: List.generate(_filters.length, (i) {
-          final selected = i == _selectedFilter;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              label: Text(_filters[i]),
-              selected: selected,
-              onSelected: (_) => setState(() => _selectedFilter = i),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Type filters (All / Money In / Money Out)
+          Row(
+            children: List.generate(_filters.length, (i) {
+              final selected = i == _selectedFilter;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  label: Text(_filters[i]),
+                  selected: selected,
+                  onSelected: (_) => setState(() => _selectedFilter = i),
+                ),
+              );
+            }),
+          ),
+          if (banks.length > 1) ...[
+            const SizedBox(height: 8),
+            // Bank filter chips (horizontal scroll)
+            SizedBox(
+              height: 38,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      avatar: const Icon(Icons.account_balance, size: 16),
+                      label: const Text('All Banks'),
+                      selected: _selectedBank == null,
+                      onSelected: (_) => setState(() => _selectedBank = null),
+                    ),
+                  ),
+                  ...banks.map((bank) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(
+                        bank.length > 14 ? '${bank.substring(0, 14)}...' : bank,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      selected: _selectedBank == bank,
+                      onSelected: (_) => setState(() {
+                        _selectedBank = _selectedBank == bank ? null : bank;
+                      }),
+                    ),
+                  )),
+                ],
+              ),
             ),
-          );
-        }),
+          ],
+        ],
       ),
     );
   }
 
   List<Transaction> _getFiltered(SmsService sms) {
     // Feature 5: base is current month transactions
-    final base = sms.currentMonthTransactions;
+    List<Transaction> base = sms.currentMonthTransactions;
+
+    // Apply bank filter
+    if (_selectedBank != null) {
+      base = base.where((t) => t.sender == _selectedBank).toList();
+    }
+
     switch (_selectedFilter) {
       case 1:
         return base.where((t) => t.isCredit).toList();
@@ -472,6 +544,63 @@ class _HomeScreenState extends State<HomeScreen> {
         return base.where((t) => t.isDebit).toList();
       default:
         return base;
+    }
+  }
+
+  /// Swipe right → Ignore transaction
+  Future<void> _handleSwipeIgnore(BuildContext ctx, Transaction tx) async {
+    await LocalStorageService.updateTransactionIgnored(tx.id, true);
+    if (ctx.mounted) {
+      ctx.read<SmsService>().reloadFromCache();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: const Text('Transaction ignored'),
+          backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: Colors.white,
+            onPressed: () async {
+              await LocalStorageService.updateTransactionIgnored(tx.id, false);
+              if (ctx.mounted) {
+                ctx.read<SmsService>().reloadFromCache();
+              }
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Swipe left → Toggle credit ↔ debit
+  Future<void> _handleSwipeToggleType(
+      BuildContext ctx, Transaction tx) async {
+    final newType =
+        tx.isCredit ? TransactionType.debit : TransactionType.credit;
+    final corrected = tx.copyWith(type: newType, isUserCorrected: true);
+    await LocalStorageService.updateTransaction(corrected);
+    if (ctx.mounted) {
+      ctx.read<SmsService>().reloadFromCache();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Changed to ${newType == TransactionType.credit ? 'Money In' : 'Money Out'}',
+          ),
+          backgroundColor:
+              newType == TransactionType.credit ? Colors.green : Colors.red,
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: Colors.white,
+            onPressed: () async {
+              final reverted =
+                  corrected.copyWith(type: tx.type, isUserCorrected: tx.isUserCorrected);
+              await LocalStorageService.updateTransaction(reverted);
+              if (ctx.mounted) {
+                ctx.read<SmsService>().reloadFromCache();
+              }
+            },
+          ),
+        ),
+      );
     }
   }
 }

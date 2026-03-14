@@ -7,8 +7,16 @@ import '../models/transaction.dart';
 class TransactionCard extends StatelessWidget {
   final Transaction tx;
   final VoidCallback? onTap;
+  final Function(Transaction)? onSwipeIgnore;
+  final Function(Transaction)? onSwipeToggleType;
 
-  const TransactionCard({super.key, required this.tx, this.onTap});
+  const TransactionCard({
+    super.key,
+    required this.tx,
+    this.onTap,
+    this.onSwipeIgnore,
+    this.onSwipeToggleType,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +27,7 @@ class TransactionCard extends StatelessWidget {
         ? const Color(0xFF1DB954).withValues(alpha: 0.08)
         : const Color(0xFFE53935).withValues(alpha: 0.08);
 
-    return Card(
+    final cardContent = Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -116,6 +124,86 @@ class TransactionCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    // If no swipe callbacks provided, return plain card
+    if (onSwipeIgnore == null && onSwipeToggleType == null) {
+      return cardContent;
+    }
+
+    // Wrap with Dismissible for swipe actions
+    return Dismissible(
+      key: ValueKey('tx_swipe_${tx.id}'),
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd && onSwipeIgnore != null) {
+          // Swipe right → Ignore
+          onSwipeIgnore!(tx);
+          return false; // Don't actually remove from list; we handle it
+        } else if (direction == DismissDirection.endToStart &&
+            onSwipeToggleType != null) {
+          // Swipe left → Toggle credit/debit
+          onSwipeToggleType!(tx);
+          return false;
+        }
+        return false;
+      },
+      background: // Swipe right background (Ignore)
+          Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.orange,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 24),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.visibility_off_rounded, color: Colors.white, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Ignore',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+      secondaryBackground: // Swipe left background (Toggle type)
+          Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+        decoration: BoxDecoration(
+          color: isCredit ? const Color(0xFFE53935) : const Color(0xFF1DB954),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isCredit ? 'Money Out' : 'Money In',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              isCredit
+                  ? Icons.arrow_upward_rounded
+                  : Icons.arrow_downward_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+      child: cardContent,
     );
   }
 

@@ -1083,6 +1083,25 @@ class LocalStorageService {
     );
   }
 
+  // ==================== ONBOARDING HELPERS ====================
+
+  /// Check if the user has completed the tracking onboarding
+  static Future<bool> hasCompletedOnboarding() async {
+    final val = await getSetting('has_completed_onboarding');
+    return val == 'true';
+  }
+
+  /// Mark onboarding as completed
+  static Future<void> setOnboardingCompleted(bool completed) async {
+    if (completed) {
+      await setSetting('has_completed_onboarding', 'true');
+    } else {
+      final db = await database;
+      await db.delete('user_settings',
+          where: 'key = ?', whereArgs: ['has_completed_onboarding']);
+    }
+  }
+
   // ==================== TRACKING SETTINGS HELPERS (Feature 4) ====================
 
   /// Get the tracking start date (null = no restriction)

@@ -419,11 +419,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirm == true) {
       await LocalStorageService.clearAll();
+      // Reset onboarding so user is asked again for tracking start point
+      await LocalStorageService.setOnboardingCompleted(false);
+      await LocalStorageService.setTrackFromDate(null);
+      await LocalStorageService.setTrackFromTransactionId(null);
       await _loadCacheStats();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Cache cleared. Pull to refresh on home screen.')),
+              content: Text('Cache cleared. Go back to home to set up tracking.')),
         );
       }
     }

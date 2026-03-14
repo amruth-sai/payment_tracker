@@ -485,6 +485,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
 
     widget.onTransactionUpdated?.call(correctedTx);
 
+    // Refresh in-memory list so all screens reflect the change instantly
+    if (mounted) {
+      context.read<SmsService>().reloadFromCache();
+    }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -524,6 +529,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               final updated = _tx.copyWith(note: note.isEmpty ? null : note);
               setState(() => _tx = updated);
               widget.onTransactionUpdated?.call(updated);
+              // Refresh in-memory list so all screens reflect the change instantly
+              if (mounted) {
+                context.read<SmsService>().reloadFromCache();
+              }
             },
             child: const Text('Save'),
           ),
@@ -561,6 +570,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                 final updated = _tx.copyWith(clearTag: true);
                 setState(() => _tx = updated);
                 widget.onTransactionUpdated?.call(updated);
+                // Refresh in-memory list so all screens reflect the change instantly
+                if (mounted) {
+                  context.read<SmsService>().reloadFromCache();
+                }
               },
               child: const Text('Remove', style: TextStyle(color: Colors.red)),
             ),
@@ -575,6 +588,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                   : _tx.copyWith(tag: tag);
               setState(() => _tx = updated);
               widget.onTransactionUpdated?.call(updated);
+              // Refresh in-memory list so all screens reflect the change instantly
+              if (mounted) {
+                context.read<SmsService>().reloadFromCache();
+              }
             },
             child: const Text('Save'),
           ),
@@ -625,6 +642,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             _selectedCustomCategory = null;
           });
           widget.onTransactionUpdated?.call(updated);
+          // Refresh in-memory list so all screens reflect the change instantly
+          if (mounted) {
+            context.read<SmsService>().reloadFromCache();
+          }
         },
         onCustomSelected: (custom) async {
           await LocalStorageService.updateTransactionCustomCategory(
@@ -635,6 +656,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             _selectedCustomCategory = custom;
           });
           widget.onTransactionUpdated?.call(updated);
+          // Refresh in-memory list so all screens reflect the change instantly
+          if (mounted) {
+            context.read<SmsService>().reloadFromCache();
+          }
         },
         onClearCategory: () async {
           await LocalStorageService.updateTransactionCustomCategory(
@@ -645,6 +670,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             _selectedCustomCategory = null;
           });
           widget.onTransactionUpdated?.call(updated);
+          // Refresh in-memory list so all screens reflect the change instantly
+          if (mounted) {
+            context.read<SmsService>().reloadFromCache();
+          }
         },
       ),
     );

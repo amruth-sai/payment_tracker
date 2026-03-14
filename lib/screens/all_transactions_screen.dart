@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
+import '../services/local_storage_service.dart';
 import '../models/transaction.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
@@ -71,10 +72,19 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                   children: [
                     _TxList(
                         transactions: _filter(sms.transactions),
-                        search: _search),
+                        search: _search,
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
+                        onSwipeToggleType: (tx) => _handleSwipeToggleType(context, tx)),
                     _TxList(
-                        transactions: _filter(sms.credits), search: _search),
-                    _TxList(transactions: _filter(sms.debits), search: _search),
+                        transactions: _filter(sms.credits),
+                        search: _search,
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
+                        onSwipeToggleType: (tx) => _handleSwipeToggleType(context, tx)),
+                    _TxList(
+                        transactions: _filter(sms.debits),
+                        search: _search,
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
+                        onSwipeToggleType: (tx) => _handleSwipeToggleType(context, tx)),
                   ],
                 );
               },
@@ -93,13 +103,77 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
           t.sender.toLowerCase().contains(_search);
     }).toList();
   }
+
+  /// Swipe right → Ignore transaction
+  Future<void> _handleSwipeIgnore(BuildContext ctx, Transaction tx) async {
+    await LocalStorageService.updateTransactionIgnored(tx.id, true);
+    if (ctx.mounted) {
+      ctx.read<SmsService>().reloadFromCache();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: const Text('Transaction ignored'),
+          backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: Colors.white,
+            onPressed: () async {
+              await LocalStorageService.updateTransactionIgnored(tx.id, false);
+              if (ctx.mounted) {
+                ctx.read<SmsService>().reloadFromCache();
+              }
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Swipe left → Toggle credit ↔ debit
+  Future<void> _handleSwipeToggleType(
+      BuildContext ctx, Transaction tx) async {
+    final newType =
+        tx.isCredit ? TransactionType.debit : TransactionType.credit;
+    final corrected = tx.copyWith(type: newType, isUserCorrected: true);
+    await LocalStorageService.updateTransaction(corrected);
+    if (ctx.mounted) {
+      ctx.read<SmsService>().reloadFromCache();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Changed to ${newType == TransactionType.credit ? 'Money In' : 'Money Out'}',
+          ),
+          backgroundColor:
+              newType == TransactionType.credit ? Colors.green : Colors.red,
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: Colors.white,
+            onPressed: () async {
+              final reverted = corrected.copyWith(
+                  type: tx.type, isUserCorrected: tx.isUserCorrected);
+              await LocalStorageService.updateTransaction(reverted);
+              if (ctx.mounted) {
+                ctx.read<SmsService>().reloadFromCache();
+              }
+            },
+          ),
+        ),
+      );
+    }
+  }
 }
 
 class _TxList extends StatelessWidget {
   final List<Transaction> transactions;
   final String search;
+  final Function(Transaction)? onSwipeIgnore;
+  final Function(Transaction)? onSwipeToggleType;
 
-  const _TxList({required this.transactions, required this.search});
+  const _TxList({
+    required this.transactions,
+    required this.search,
+    this.onSwipeIgnore,
+    this.onSwipeToggleType,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -152,6 +226,8 @@ class _TxList extends StatelessWidget {
               (tx) => TransactionCard(
                 tx: tx,
                 onTap: () => TransactionDetailSheet.show(context, tx),
+                onSwipeIgnore: onSwipeIgnore,
+                onSwipeToggleType: onSwipeToggleType,
               ),
             ),
           ],
