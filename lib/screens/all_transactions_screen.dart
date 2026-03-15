@@ -344,6 +344,8 @@ class _TxList extends StatelessWidget {
             ...txs.map(
               (tx) => TransactionCard(
                 tx: tx,
+                accountDisplayName: context.read<SmsService>().getAccountDisplayName(
+                    tx.accountId, tx.accountLast4),
                 onTap: () => TransactionDetailSheet.show(context, tx),
                 onSwipeIgnore: onSwipeIgnore,
                 onSwipeToggleType: onSwipeToggleType,

@@ -1237,6 +1237,24 @@ class LocalStorageService {
     }
   }
 
+  /// Get the salary cycle day (e.g. 25 means cycle runs from 25th to 24th next month)
+  static Future<int?> getSalaryCycleDay() async {
+    final val = await getSetting('salary_cycle_day');
+    if (val == null) return null;
+    return int.tryParse(val);
+  }
+
+  /// Set the salary cycle day (1-31), or null to clear
+  static Future<void> setSalaryCycleDay(int? day) async {
+    if (day == null) {
+      final db = await database;
+      await db.delete('user_settings',
+          where: 'key = ?', whereArgs: ['salary_cycle_day']);
+    } else {
+      await setSetting('salary_cycle_day', day.toString());
+    }
+  }
+
   /// Get all transactions at or after the given date (used with tracking settings)
   static Future<List<Transaction>> getTransactionsSince(DateTime from) async {
     final db = await database;

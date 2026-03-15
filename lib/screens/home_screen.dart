@@ -1,7 +1,6 @@
 // lib/screens/home_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
 import '../services/ai_sms_parser.dart';
@@ -125,10 +124,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 SliverToBoxAdapter(child: _buildQuickActions()),
                 SliverToBoxAdapter(
                   child: SummaryCard(
-                    totalIn: sms.currentMonthCredits,
-                    totalOut: sms.currentMonthDebits,
-                    txCount: sms.currentMonthTransactions.length,
-                    subtitle: DateFormat('MMMM yyyy').format(DateTime.now()),
+                    totalIn: sms.currentCycleCredits,
+                    totalOut: sms.currentCycleDebits,
+                    txCount: sms.currentCycleTransactions.length,
+                    subtitle: sms.currentCycleSubtitle,
                   ),
                 ),
                 SliverToBoxAdapter(child: _buildFilterRow(sms)),
@@ -144,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'This Month',
+                            sms.currentCycleLabel,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -170,6 +169,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => TransactionCard(
                         tx: recent[i],
+                        accountDisplayName: sms.getAccountDisplayName(
+                            recent[i].accountId, recent[i].accountLast4),
                         onTap: () =>
                             TransactionDetailSheet.show(context, recent[i]),
                         onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
@@ -313,10 +314,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.calendar_month,
                 label: 'Salary',
                 color: Colors.green,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SalaryCycleScreen()),
-                ),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SalaryCycleScreen()),
+                  );
+                  if (mounted) {
+                    context.read<SmsService>().reloadFromCache();
+                  }
+                },
               ),
               const SizedBox(width: 8),
               _QuickActionButton(
@@ -457,10 +463,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Extract unique bank/sender names from current month transactions
+  /// Extract unique bank/sender names from current cycle transactions
   List<String> _getUniqueBanks(SmsService sms) {
     final banks = <String>{};
-    for (final tx in sms.currentMonthTransactions) {
+    for (final tx in sms.currentCycleTransactions) {
       final name = tx.sender.trim();
       if (name.isNotEmpty) banks.add(name);
     }
@@ -529,8 +535,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Transaction> _getFiltered(SmsService sms) {
-    // Feature 5: base is current month transactions
-    List<Transaction> base = sms.currentMonthTransactions;
+    // Base is current cycle transactions (salary cycle or calendar month fallback)
+    List<Transaction> base = sms.currentCycleTransactions;
 
     // Apply bank filter
     if (_selectedBank != null) {

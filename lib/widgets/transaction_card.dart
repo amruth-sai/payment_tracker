@@ -6,6 +6,7 @@ import '../models/transaction.dart';
 
 class TransactionCard extends StatelessWidget {
   final Transaction tx;
+  final String? accountDisplayName;
   final VoidCallback? onTap;
   final Function(Transaction)? onSwipeIgnore;
   final Function(Transaction)? onSwipeToggleType;
@@ -13,6 +14,7 @@ class TransactionCard extends StatelessWidget {
   const TransactionCard({
     super.key,
     required this.tx,
+    this.accountDisplayName,
     this.onTap,
     this.onSwipeIgnore,
     this.onSwipeToggleType,
@@ -70,20 +72,22 @@ class TransactionCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 3),
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
                       children: [
                         _Chip(
                             label: tx.sourceLabel,
                             color: theme.colorScheme.primary),
-                        if (tx.accountLast4 != null) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            '••${tx.accountLast4}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                        if (accountDisplayName != null)
+                          _Chip(
+                              label: accountDisplayName!,
+                              color: theme.colorScheme.tertiary),
+                        if (tx.category != null &&
+                            tx.category != TransactionCategory.uncategorized)
+                          _Chip(
+                              label: tx.category!.displayName,
+                              color: theme.colorScheme.secondary),
                       ],
                     ),
                     const SizedBox(height: 3),

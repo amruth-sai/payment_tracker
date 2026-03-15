@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:another_telephony/telephony.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/transaction.dart';
+import '../models/account.dart';
+import '../models/salary_cycle.dart';
 import 'sms_parser.dart';
 import 'ai_sms_parser.dart';
 import 'local_storage_service.dart';
@@ -13,6 +15,10 @@ class SmsService extends ChangeNotifier {
   final Telephony _telephony = Telephony.instance;
 
   List<Transaction> _transactions = [];
+  List<Account> _accounts = [];
+  Map<String, Account> _accountsMap = {};
+  SalaryCycle? _currentCycle;
+  int? _salaryCycleDay; // User-configured salary day (e.g. 25)
   List<Transaction> _newlyFoundTransactions = []; // Feature 6: for review popup
   bool _isLoading = false;
   bool _hasPermission = false;
@@ -25,6 +31,7 @@ class SmsService extends ChangeNotifier {
   String _loadingStatus = '';
 
   List<Transaction> get transactions => _transactions;
+  List<Account> get accounts => _accounts;
   List<Transaction> get newlyFoundTransactions => _newlyFoundTransactions;
   bool get isLoading => _isLoading;
   bool get hasPermission => _hasPermission;
@@ -46,7 +53,70 @@ class SmsService extends ChangeNotifier {
 
   double get totalDebits => debits.fold(0, (sum, t) => sum + t.amount);
 
-  // Feature 5: Current-month getters
+  // Current cycle (salary-based) or fallback to calendar month
+  SalaryCycle? get currentCycle => _currentCycle;
+
+  /// Transactions in the current cycle period, or current calendar month if no cycle
+  List<Transaction> get currentCycleTransactions {
+    if (_currentCycle != null) {
+      final start = _currentCycle!.startDate;
+      final end = _currentCycle!.endDate ?? DateTime.now();
+      return _transactions
+          .where((t) =>
+              !t.date.isBefore(start) && !t.date.isAfter(end))
+          .toList();
+    }
+    // Use salary cycle day if set, otherwise fall back to calendar month
+    if (_salaryCycleDay != null) {
+      final range = _getCycleDateRange(_salaryCycleDay!);
+      return _transactions
+          .where((t) =>
+              !t.date.isBefore(range.$1) && !t.date.isAfter(range.$2))
+          .toList();
+    }
+    return currentMonthTransactions;
+  }
+
+  double get currentCycleCredits => currentCycleTransactions
+      .where((t) => t.isCredit)
+      .fold(0.0, (sum, t) => sum + t.amount);
+
+  double get currentCycleDebits => currentCycleTransactions
+      .where((t) => t.isDebit)
+      .fold(0.0, (sum, t) => sum + t.amount);
+
+  String get currentCycleLabel {
+    if (_currentCycle != null) {
+      return _currentCycle!.cycleLabel;
+    }
+    if (_salaryCycleDay != null) {
+      return 'Current Cycle';
+    }
+    return 'This Month';
+  }
+
+  String get currentCycleSubtitle {
+    if (_currentCycle != null) {
+      final start = _currentCycle!.startDate;
+      final end = _currentCycle!.endDate ?? DateTime.now();
+      final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${start.day} ${months[start.month - 1]} – ${end.day} ${months[end.month - 1]} ${end.year}';
+    }
+    if (_salaryCycleDay != null) {
+      final range = _getCycleDateRange(_salaryCycleDay!);
+      final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${range.$1.day} ${months[range.$1.month - 1]} – ${range.$2.day} ${months[range.$2.month - 1]} ${range.$2.year}';
+    }
+    return _monthYearNow();
+  }
+
+  static String _monthYearNow() {
+    final now = DateTime.now();
+    final months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return '${months[now.month - 1]} ${now.year}';
+  }
+
+  // Feature 5: Current-month getters (calendar month fallback)
   List<Transaction> get currentMonthTransactions {
     final now = DateTime.now();
     return _transactions
@@ -245,6 +315,8 @@ class SmsService extends ChangeNotifier {
       _error = 'Failed to read SMS: $e';
     }
 
+    await _loadAccounts();
+    await _loadCurrentCycle();
     _isLoading = false;
     notifyListeners();
   }
@@ -304,9 +376,71 @@ class SmsService extends ChangeNotifier {
     return all.where((t) => !t.isIgnored).toList();
   }
 
+  Future<void> _loadAccounts() async {
+    _accounts = await LocalStorageService.getAllAccounts();
+    _accountsMap = {for (final a in _accounts) a.id: a};
+  }
+
+  Future<void> _loadCurrentCycle() async {
+    final cycles = await LocalStorageService.getAllSalaryCycles();
+    _currentCycle = cycles.isEmpty
+        ? null
+        : cycles.firstWhere(
+            (c) => c.isCurrent,
+            orElse: () => cycles.first,
+          );
+    _salaryCycleDay = await LocalStorageService.getSalaryCycleDay();
+  }
+
+  /// Compute the current cycle date range from a salary day.
+  /// E.g. if salary day is 25, and today is Mar 10, the cycle is Feb 25 – Mar 24.
+  /// If today is Mar 28, the cycle is Mar 25 – Apr 24.
+  static (DateTime, DateTime) _getCycleDateRange(int salaryDay) {
+    final now = DateTime.now();
+    DateTime cycleStart;
+    if (now.day >= salaryDay) {
+      // Cycle started this month
+      cycleStart = DateTime(now.year, now.month, salaryDay);
+    } else {
+      // Cycle started last month
+      final prevMonth = DateTime(now.year, now.month - 1, 1);
+      final daysInPrevMonth = DateTime(prevMonth.year, prevMonth.month + 1, 0).day;
+      final clampedDay = salaryDay > daysInPrevMonth ? daysInPrevMonth : salaryDay;
+      cycleStart = DateTime(prevMonth.year, prevMonth.month, clampedDay);
+    }
+    // Cycle ends the day before the next salary day
+    final nextMonth = DateTime(cycleStart.year, cycleStart.month + 1, 1);
+    final daysInNextMonth = DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
+    final clampedNextDay = salaryDay > daysInNextMonth ? daysInNextMonth : salaryDay;
+    final cycleEnd = DateTime(nextMonth.year, nextMonth.month, clampedNextDay)
+        .subtract(const Duration(days: 1));
+    // Return start to min(cycleEnd, now) — don't go into the future
+    final effectiveEnd = cycleEnd.isAfter(now) ? now : cycleEnd;
+    return (cycleStart, effectiveEnd);
+  }
+
+  String? getAccountDisplayName(String? accountId, String? accountLast4) {
+    if (accountId != null) {
+      final account = _accountsMap[accountId];
+      if (account != null) return account.displayName;
+    }
+    // Fallback: match account by last 4 digits
+    if (accountLast4 != null) {
+      final match = _accounts.cast<Account?>().firstWhere(
+        (a) => a!.last4Digits == accountLast4,
+        orElse: () => null,
+      );
+      if (match != null) return match.displayName;
+      return '••$accountLast4';
+    }
+    return null;
+  }
+
   /// Feature 4: Re-apply tracking filters and refresh in-memory list
   Future<void> reloadFromCache() async {
     _transactions = await _getFilteredTransactions();
+    await _loadAccounts();
+    await _loadCurrentCycle();
     notifyListeners();
   }
 }

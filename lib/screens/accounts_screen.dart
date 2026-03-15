@@ -1,8 +1,10 @@
 // lib/screens/accounts_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/account.dart';
 import '../services/local_storage_service.dart';
+import '../services/sms_service.dart';
 
 class AccountsScreen extends StatefulWidget {
   const AccountsScreen({super.key});
@@ -248,6 +250,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
     if (confirm == true) {
       await LocalStorageService.deleteAccount(account.id);
       await _loadAccounts();
+      if (mounted) {
+        context.read<SmsService>().reloadFromCache();
+      }
     }
   }
 
@@ -260,6 +265,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
     if (result != null) {
       await LocalStorageService.saveAccount(result);
       await _loadAccounts();
+      if (mounted) {
+        context.read<SmsService>().reloadFromCache();
+      }
     }
   }
 
@@ -272,6 +280,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
     if (result != null) {
       await LocalStorageService.saveAccount(result);
       await _loadAccounts();
+      if (mounted) {
+        context.read<SmsService>().reloadFromCache();
+      }
     }
   }
 }

@@ -17,6 +17,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
   List<Transaction> _potentialSalaries = [];
   bool _isLoading = true;
   bool _showPotentialSalaries = false;
+  int? _salaryCycleDay;
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
     try {
       // Load existing salary cycles
       final cycles = await LocalStorageService.getAllSalaryCycles();
+      final cycleDay = await LocalStorageService.getSalaryCycleDay();
 
       // Get potential salary transactions
       final potential =
@@ -45,6 +47,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
 
       setState(() {
         _cycles = cycles;
+        _salaryCycleDay = cycleDay;
         _potentialSalaries =
             potential.take(20).toList(); // Show top 20 candidates
         _isLoading = false;
@@ -89,6 +92,9 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
       child: ListView(
         padding: const EdgeInsets.only(bottom: 80),
         children: [
+          // Salary cycle day setting
+          _buildSalaryCycleDaySetting(),
+
           // Potential salaries section (for marking)
           if (_potentialSalaries.isNotEmpty) ...[
             _buildSectionHeader(
@@ -120,40 +126,45 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.calendar_month_outlined,
-              size: 64,
-              color: Colors.grey[400],
+    return ListView(
+      children: [
+        _buildSalaryCycleDaySetting(),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.calendar_month_outlined,
+                  size: 64,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'No Salary Cycles Found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Set your salary day above to track by pay cycle,\nor mark salary transactions to auto-generate cycles.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: _loadData,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'No Salary Cycles Found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'We couldn\'t detect any salary transactions.\nMake sure you have credit transactions from your employer.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _loadData,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh'),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -413,6 +424,149 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildSalaryCycleDaySetting() {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.event_repeat, color: Colors.green),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Salary Day',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    _salaryCycleDay != null
+                        ? 'Every month on the ${_ordinal(_salaryCycleDay!)}'
+                        : 'Set your monthly salary date',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            if (_salaryCycleDay != null)
+              IconButton(
+                icon: const Icon(Icons.clear, size: 20),
+                onPressed: () async {
+                  await LocalStorageService.setSalaryCycleDay(null);
+                  setState(() => _salaryCycleDay = null);
+                },
+                tooltip: 'Clear salary day',
+              ),
+            FilledButton.tonal(
+              onPressed: _showSalaryCycleDayPicker,
+              child: Text(
+                _salaryCycleDay != null ? '$_salaryCycleDay' : 'Set',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSalaryCycleDayPicker() async {
+    int selected = _salaryCycleDay ?? 1;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Select Salary Day'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Which day of the month do you receive your salary?',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 150,
+                    child: ListWheelScrollView.useDelegate(
+                      itemExtent: 42,
+                      diameterRatio: 1.5,
+                      physics: const FixedExtentScrollPhysics(),
+                      controller: FixedExtentScrollController(
+                        initialItem: selected - 1,
+                      ),
+                      onSelectedItemChanged: (index) {
+                        setDialogState(() => selected = index + 1);
+                      },
+                      childDelegate: ListWheelChildBuilderDelegate(
+                        childCount: 31,
+                        builder: (context, index) {
+                          final day = index + 1;
+                          final isSelected = day == selected;
+                          return Center(
+                            child: Text(
+                              _ordinal(day),
+                              style: TextStyle(
+                                fontSize: isSelected ? 20 : 16,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color:
+                                    isSelected ? Colors.green : Colors.grey[600],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, selected),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      await LocalStorageService.setSalaryCycleDay(result);
+      setState(() => _salaryCycleDay = result);
+    }
+  }
+
+  static String _ordinal(int day) {
+    if (day >= 11 && day <= 13) return '${day}th';
+    switch (day % 10) {
+      case 1:
+        return '${day}st';
+      case 2:
+        return '${day}nd';
+      case 3:
+        return '${day}rd';
+      default:
+        return '${day}th';
+    }
   }
 
   Future<void> _toggleSalaryMark(Transaction tx) async {

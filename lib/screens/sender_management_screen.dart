@@ -2,10 +2,12 @@
 // Screen for managing sender assignments and manual message reassignment
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/sender_mapping.dart';
 import '../models/account.dart';
 import '../services/sender_discovery_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/sms_service.dart';
 import '../widgets/transaction_reassignment_sheet.dart';
 
 class SenderManagementScreen extends StatefulWidget {
@@ -114,6 +116,7 @@ class _SenderManagementScreenState extends State<SenderManagementScreen>
     final senderTransactions = transactions.where((tx) => tx.sender == senderId).toList();
 
     if (mounted && senderTransactions.isNotEmpty) {
+      final sms = context.read<SmsService>();
       await showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -129,6 +132,7 @@ class _SenderManagementScreenState extends State<SenderManagementScreen>
               );
             }
             _loadData();
+            sms.reloadFromCache();
           },
         ),
       );
