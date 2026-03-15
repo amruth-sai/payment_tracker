@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart' hide Transaction;
 import 'package:path/path.dart';
 import '../models/transaction.dart';
 import '../models/account.dart';
+import '../models/sender_mapping.dart';
 import '../models/salary_cycle.dart';
 import '../models/budget.dart';
 import '../models/app_alert.dart';
@@ -14,7 +15,7 @@ import '../models/custom_category.dart';
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 4; // v4: tag, isIgnored, customCategoryId, custom_categories table
+  static const int _dbVersion = 5; // v5: sender_mappings table for dynamic sender assignments
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -158,6 +159,18 @@ class LocalStorageService {
       )
     ''');
 
+    // Table for sender mappings (dynamic parent-child relationships)
+    await db.execute('''
+      CREATE TABLE sender_mappings (
+        id TEXT PRIMARY KEY,
+        sender_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        is_user_assigned INTEGER DEFAULT 0,
+        FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
+      )
+    ''');
+
     // Indexes for faster lookups
     await db.execute(
         'CREATE INDEX idx_transactions_date ON transactions(date DESC)');
@@ -296,6 +309,25 @@ class LocalStorageService {
       // Index on is_ignored for fast filtering
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_transactions_ignored ON transactions(is_ignored)');
+    }
+    if (oldVersion < 5) {
+      // Create sender_mappings table for dynamic sender assignments
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sender_mappings (
+          id TEXT PRIMARY KEY,
+          sender_id TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          is_user_assigned INTEGER DEFAULT 0,
+          FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
+        )
+      ''');
+
+      // Indexes for sender mappings
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_sender_mappings_sender ON sender_mappings(sender_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_sender_mappings_account ON sender_mappings(account_id)');
     }
   }
 
@@ -557,6 +589,35 @@ class LocalStorageService {
       }
     }
     return sender;
+  }
+
+  // ==================== SENDER MAPPING OPERATIONS ====================
+
+  /// Save a sender mapping
+  static Future<void> saveSenderMapping(SenderMapping mapping) async {
+    final db = await database;
+    await db.insert(
+      'sender_mappings',
+      mapping.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Get all sender mappings
+  static Future<List<SenderMapping>> getAllSenderMappings() async {
+    final db = await database;
+    final rows = await db.query('sender_mappings');
+    return rows.map((r) => SenderMapping.fromMap(r)).toList();
+  }
+
+  /// Delete all sender mappings for an account
+  static Future<void> deleteSenderMappingsForAccount(String accountId) async {
+    final db = await database;
+    await db.delete(
+      'sender_mappings',
+      where: 'account_id = ?',
+      whereArgs: [accountId],
+    );
   }
 
   /// Get transactions by account
@@ -999,6 +1060,18 @@ class LocalStorageService {
     await db.update(
       'transactions',
       {'category': category.name},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Update transaction type (credit/debit)
+  static Future<void> updateTransactionType(
+      String txId, TransactionType type) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'type': type.name, 'is_user_corrected': 1},
       where: 'id = ?',
       whereArgs: [txId],
     );

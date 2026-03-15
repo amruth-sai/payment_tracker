@@ -204,7 +204,7 @@ class SmsService extends ChangeNotifier {
         } else {
           // Use rule-based parser - limited to known senders
           if (SmsParser.isBankSms(sender)) {
-            tx = SmsParser.parse(body, sender, date, id);
+            tx = await SmsParser.parse(body, sender, date, id);
             if (tx != null) {
               _ruleParsedCount++;
               parsedBy = 'rule';
