@@ -22,11 +22,11 @@ class SmsParser {
     ],
     'AIRTEL': [
       'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK', 'AIRTELPAY',
-      'AIRTELBANK', 'AIRTELBK', 'ARTLBK',
+      'AIRTELBANK', 'AIRTELBK', 'ARTLBK', 'AIRBKS',
     ],
     'JIO PAY': [
       'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', 'JIOBANK',
-      'JIOPAYMENTS', 'JIOFINANCE',
+      'JIOPAYMENTS', 'JIOFINANCE', 'JIOPBS', 'JPBL',
     ],
     'SBI': [
       'SBIINB', 'SBI', 'SBIBANK', 'SBIMB', 'SBINET', 'SBIALERT',
@@ -52,8 +52,8 @@ class SmsParser {
     'BOBSMS', 'BOBONE', 'BOBBNK', // Bank of Baroda / OneCard
 
     // Telecom & Digital Banks
-    'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK', // Airtel Payments Bank
-    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', // Jio Payments / Jio Finance
+    'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK', 'AIRBKS', // Airtel Payments Bank
+    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', 'JIOPBS', 'JPBL', // Jio Payments Bank / Jio Finance
 
     // UPI & Wallets
     'PAYTM', 'GPAY', 'PHONEPE', 'AMAZONPAY', 'MOBIKWIK',
@@ -77,7 +77,7 @@ class SmsParser {
   static bool isBankSms(String sender) {
     final s = sender.toUpperCase();
     return _knownSenders.any((k) => s.contains(k)) ||
-        RegExp(r'^[A-Z]{2}-[A-Z]{6}$').hasMatch(sender); // DM-HDFCBK format
+        RegExp(r'^[A-Z]{2}-[A-Z]{5,6}(?:-[A-Z])?$').hasMatch(sender); // AD-AIRBNK-S, DM-HDFCBK, JD-JIOPBS-S format
   }
 
   /// Load sender mappings from database with caching
@@ -413,6 +413,17 @@ class SmsParser {
       return TransactionType.debit;
     }
 
+    // Check for "Sent Rs." or "Txn Rs." at the beginning - clear debit indicators
+    if (RegExp(r'^sent\s+rs\.?', caseSensitive: false).hasMatch(body.trim()) ||
+        RegExp(r'^txn\s+rs\.?', caseSensitive: false).hasMatch(body.trim())) {
+      return TransactionType.debit;
+    }
+
+    // Check for "Rs. XXX Sent" pattern (Jio format)
+    if (RegExp(r'rs\.?\s*[\d,]+(?:\.\d{2})?\s+sent', caseSensitive: false).hasMatch(body)) {
+      return TransactionType.debit;
+    }
+
     final creditWords = [
       'credited',
       'received',
@@ -425,13 +436,16 @@ class SmsParser {
       'refund',
       'reversed',
       'reversal',
+      'credited with', // "a/c is credited with Rs.200"
     ];
     final debitWords = [
       'debited',
       'spent',
       'debit',
-      'payment',
-      'paid',
+      'paid to',
+      'paid for',
+      'paid via',
+      'paid at',
       'withdrawn',
       'transferred to',
       'purchase',
@@ -442,6 +456,11 @@ class SmsParser {
       'txn of',
       'transaction of',
       'bill payment',
+      'sent from', // "Rs.740 Sent from x9295"
+      'payment to',
+      'payment of',
+      'payment for',
+      'payment via',
     ];
 
     // Context-aware detection: "credited to merchant" means debit for you
@@ -524,7 +543,37 @@ class SmsParser {
 
   static String? _extractMerchant(String body, TransactionType type) {
     if (type == TransactionType.debit) {
-      // "at MERCHANT NAME" or "to VPA@bank"
+      // Pattern 1: "Info: UPI/DR/REF/MERCHANT" (Jio format)
+      final infoMatch = RegExp(
+              r'Info:\s*UPI/(?:DR|CR)/\d+/([A-Za-z0-9 ]+)',
+              caseSensitive: false)
+          .firstMatch(body);
+      if (infoMatch != null) {
+        final name = infoMatch.group(1)!.trim();
+        if (name.length > 2 && name.length < 40) return name;
+      }
+
+      // Pattern 2: "At VPA@bank" (HDFC Card UPI format)
+      final atVpaMatch = RegExp(
+              r'(?:at)\s+([A-Za-z0-9.\-]+@[A-Za-z0-9]+)',
+              caseSensitive: false)
+          .firstMatch(body);
+      if (atVpaMatch != null) {
+        return atVpaMatch.group(1)!.trim();
+      }
+
+      // Pattern 3: "To MERCHANT NAME" at start of line (HDFC UPI multi-line format)
+      final toLineMatch = RegExp(
+              r'(?:^|\n)To\s+([A-Z][A-Za-z0-9 ]+?)(?:\s*\n|\s+On\s|\s*$)',
+              caseSensitive: false,
+              multiLine: true)
+          .firstMatch(body);
+      if (toLineMatch != null) {
+        final name = toLineMatch.group(1)!.trim();
+        if (name.length > 2 && name.length < 40) return name;
+      }
+
+      // Pattern 4: "at MERCHANT NAME" or "to VPA@bank" (original patterns)
       final atMatch = RegExp(
               r"(?:at|to)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)",
               caseSensitive: false)
@@ -557,17 +606,38 @@ class SmsParser {
   }
 
   static String? _extractAccountLast4(String body) {
-    final match = RegExp(
-            r'(?:a/c|account|ac|card)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})',
-            caseSensitive: false)
-        .firstMatch(body);
-    return match?.group(1);
+    final patterns = [
+      // Pattern 1: "a/c XX1234" or "A/C *1651" (standard bank format)
+      RegExp(r'(?:a/c|account|ac)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})',
+          caseSensitive: false),
+      // Pattern 2: "Card 9162" (HDFC Card format - just 4 digits after Card)
+      RegExp(r'(?:card)\s*(?:no\.?|num\.?)?\s*(\d{4})\b', caseSensitive: false),
+      // Pattern 3: "from x9295" or "x9295" (Jio format - x followed by 4 digits)
+      RegExp(r'(?:from\s+)?[xX](\d{4})\b', caseSensitive: false),
+      // Pattern 4: "*1651" standalone (masked account)
+      RegExp(r'\*(\d{4})\b', caseSensitive: false),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(body);
+      if (match != null) return match.group(1);
+    }
+    return null;
   }
 
   static String? _extractRefId(String body) {
     final patterns = [
+      // Pattern 1: "Txn ID: 322438863654" (Airtel format)
+      RegExp(r'(?:txn\s*id)[:\s]+(\d{10,15})', caseSensitive: false),
+      // Pattern 2: "ref.:", "txn.:", "utr", "rrn" followed by alphanumeric
       RegExp(r'(?:ref\.?|txn\.?|utr|rrn)[:\s#]+([A-Z0-9]{8,22})',
           caseSensitive: false),
+      // Pattern 3: "by UPI 119184082771" (HDFC Card format)
+      RegExp(r'by\s+UPI\s+(\d{9,15})', caseSensitive: false),
+      // Pattern 4: "Ref 179775436288" (HDFC UPI format - no colon)
+      RegExp(r'(?:^|\s)Ref\s+(\d{9,15})', caseSensitive: false),
+      // Pattern 5: "Info: UPI/DR/299922204562/..." (Jio format)
+      RegExp(r'Info:\s*UPI/(?:DR|CR)/(\d{9,15})/', caseSensitive: false),
+      // Pattern 6: Standard UPI reference
       RegExp(r'(?:UPI)\s+(\d{9,15})', caseSensitive: false),
     ];
     for (final pattern in patterns) {
