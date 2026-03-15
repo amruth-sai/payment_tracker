@@ -299,13 +299,13 @@ class _TransactionTile extends StatelessWidget {
       duration: const Duration(milliseconds: 150),
       decoration: BoxDecoration(
         color: isSelected
-            ? theme.colorScheme.primaryContainer.withOpacity(0.3)
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
             : theme.colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSelected
-              ? theme.colorScheme.primary.withOpacity(0.5)
-              : amountColor.withOpacity(0.2),
+              ? theme.colorScheme.primary.withValues(alpha: 0.5)
+              : amountColor.withValues(alpha: 0.2),
           width: isSelected ? 2 : 1,
         ),
       ),

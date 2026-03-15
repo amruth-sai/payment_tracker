@@ -551,7 +551,7 @@ class _UnassignedSenderTile extends StatelessWidget {
               color: Colors.orange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(
+            child: const Icon(
               Icons.help_outline,
               color: Colors.orange,
               size: 20,
@@ -804,12 +804,12 @@ class _AddAccountDialogState extends State<_AddAccountDialog> {
             DropdownButtonFormField<AccountType>(
               initialValue: _selectedType,
               decoration: const InputDecoration(labelText: 'Account Type *'),
-              items: [
-                const DropdownMenuItem(
+              items: const [
+                DropdownMenuItem(
                   value: AccountType.bankAccount,
                   child: Text('Bank Account'),
                 ),
-                const DropdownMenuItem(
+                DropdownMenuItem(
                   value: AccountType.creditCard,
                   child: Text('Credit Card'),
                 ),

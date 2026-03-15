@@ -69,6 +69,7 @@ class TransactionReviewService {
     // Show appropriate review sheet based on what we found
     if (userBankTransactions.isNotEmpty) {
       // Show sender-grouped review for user's banks
+      if (!context.mounted) return;
       await _showSenderGroupedReview(
         context,
         userBankTransactions,
@@ -82,6 +83,7 @@ class TransactionReviewService {
 
           // If there are other transactions, show regular review
           if (otherTransactions.isNotEmpty) {
+            if (!context.mounted) return;
             await _showRegularReview(context, otherTransactions, onCompleted);
           } else {
             onCompleted?.call();
@@ -90,6 +92,7 @@ class TransactionReviewService {
       );
     } else if (otherTransactions.isNotEmpty) {
       // Only other transactions found, show regular review
+      if (!context.mounted) return;
       await _showRegularReview(context, otherTransactions, onCompleted);
     }
   }

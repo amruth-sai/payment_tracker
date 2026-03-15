@@ -1124,6 +1124,30 @@ class LocalStorageService {
     );
   }
 
+  /// Update transaction payment source
+  static Future<void> updateTransactionSource(
+      String txId, PaymentSource source) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'source': source.name},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Update transaction account assignment
+  static Future<void> updateTransactionAccountId(
+      String txId, String? accountId) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'account_id': accountId},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
   // ==================== CUSTOM CATEGORY OPERATIONS (Feature 3) ====================
 
   /// Get all user-created custom categories

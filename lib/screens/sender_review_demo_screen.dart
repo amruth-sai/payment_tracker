@@ -259,22 +259,22 @@ class _SenderReviewDemoScreenState extends State<SenderReviewDemoScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          _HowItWorksStep(
+                          const _HowItWorksStep(
                             step: '1',
                             title: 'SMS Analysis',
                             description: 'The app reads SMS messages from banks and payment services',
                           ),
-                          _HowItWorksStep(
+                          const _HowItWorksStep(
                             step: '2',
                             title: 'Sender Mapping',
                             description: 'Messages are grouped by unified sender names (e.g., HDFCBK → HDFC)',
                           ),
-                          _HowItWorksStep(
+                          const _HowItWorksStep(
                             step: '3',
                             title: 'User Review',
                             description: 'You can review and confirm transaction types for each sender group',
                           ),
-                          _HowItWorksStep(
+                          const _HowItWorksStep(
                             step: '4',
                             title: 'Smart Organization',
                             description: 'Your specific banks (HDFC, ICICI, Airtel, Jio Pay, OneCard, SBI) are highlighted',

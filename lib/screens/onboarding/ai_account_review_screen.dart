@@ -600,7 +600,7 @@ class _EditAccountDialogState extends State<_EditAccountDialog> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<AccountType>(
-            value: _selectedType,
+            initialValue: _selectedType,
             decoration: const InputDecoration(
               labelText: 'Account Type',
               border: OutlineInputBorder(),
@@ -687,7 +687,7 @@ class _AddAccountDialogState extends State<_AddAccountDialog> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<AccountType>(
-            value: _selectedType,
+            initialValue: _selectedType,
             decoration: const InputDecoration(
               labelText: 'Account Type',
               border: OutlineInputBorder(),

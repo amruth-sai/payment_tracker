@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/transaction.dart';
 import '../models/custom_category.dart';
+import '../models/account.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 
@@ -40,12 +41,14 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   late Transaction _tx;
   List<CustomCategory> _customCategories = [];
   CustomCategory? _selectedCustomCategory;
+  List<Account> _accounts = [];
 
   @override
   void initState() {
     super.initState();
     _tx = widget.tx;
     _loadCustomCategories();
+    _loadAccounts();
   }
 
   Future<void> _loadCustomCategories() async {
@@ -61,6 +64,13 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
         _customCategories = cats;
         _selectedCustomCategory = current;
       });
+    }
+  }
+
+  Future<void> _loadAccounts() async {
+    final accounts = await LocalStorageService.getAllAccounts();
+    if (mounted) {
+      setState(() => _accounts = accounts);
     }
   }
 
@@ -374,11 +384,84 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               children: [
                 _DetailRow('Date & Time',
                     DateFormat('dd MMM yyyy, hh:mm a').format(_tx.date), theme),
-                _DetailRow('Via', _tx.sourceLabel, theme),
+                // Tappable Via (payment source) row
+                InkWell(
+                  onTap: _showSourcePicker,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Via',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              _tx.sourceLabel,
+                              style: theme.textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.edit, size: 14, color: Colors.grey[400]),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 if (_tx.merchant != null)
                   _DetailRow('Merchant', _tx.merchant!, theme),
-                if (_tx.accountLast4 != null)
-                  _DetailRow('Account', '••••${_tx.accountLast4}', theme),
+                // Tappable Account row (always visible)
+                InkWell(
+                  onTap: _accounts.isNotEmpty ? _showAccountPicker : null,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Account',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              _tx.accountId != null
+                                  ? _getAccountDisplayName(_tx.accountId!)
+                                  : (_tx.accountLast4 != null
+                                      ? '••••${_tx.accountLast4}'
+                                      : 'Assign account'),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                fontStyle: _tx.accountId == null &&
+                                        _tx.accountLast4 == null
+                                    ? FontStyle.italic
+                                    : FontStyle.normal,
+                                color: _tx.accountId == null &&
+                                        _tx.accountLast4 == null
+                                    ? theme.colorScheme.onSurfaceVariant
+                                    : null,
+                              ),
+                            ),
+                            if (_accounts.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.edit, size: 14,
+                                  color: Colors.grey[400]),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 if (_tx.balance != null)
                   _DetailRow(
                       'Balance After',
@@ -618,6 +701,199 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             : 'Transaction restored — included in summaries'),
         backgroundColor: newIgnored ? Colors.orange : Colors.green,
       ));
+    }
+  }
+
+  // Payment source picker
+  void _showSourcePicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          title: const Text('Payment Source'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: PaymentSource.values
+                .where((s) => s != PaymentSource.unknown)
+                .map((source) {
+              final isSelected = _tx.source == source;
+              return ListTile(
+                leading: Icon(
+                  _sourceIcon(source),
+                  color: isSelected ? theme.colorScheme.primary : null,
+                ),
+                title: Text(_sourceDisplayName(source)),
+                selected: isSelected,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: () => _updateSource(ctx, source),
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  IconData _sourceIcon(PaymentSource source) {
+    switch (source) {
+      case PaymentSource.upi:
+        return Icons.phone_android;
+      case PaymentSource.bank:
+        return Icons.account_balance;
+      case PaymentSource.card:
+        return Icons.credit_card;
+      case PaymentSource.wallet:
+        return Icons.account_balance_wallet;
+      default:
+        return Icons.payment;
+    }
+  }
+
+  String _sourceDisplayName(PaymentSource source) {
+    switch (source) {
+      case PaymentSource.upi:
+        return 'UPI';
+      case PaymentSource.bank:
+        return 'Bank Transfer';
+      case PaymentSource.card:
+        return 'Card';
+      case PaymentSource.wallet:
+        return 'Wallet';
+      default:
+        return 'Payment';
+    }
+  }
+
+  Future<void> _updateSource(BuildContext ctx, PaymentSource newSource) async {
+    Navigator.pop(ctx);
+    await LocalStorageService.updateTransactionSource(_tx.id, newSource);
+    final updated = _tx.copyWith(source: newSource);
+    setState(() => _tx = updated);
+    widget.onTransactionUpdated?.call(updated);
+    if (mounted) {
+      context.read<SmsService>().reloadFromCache();
+    }
+  }
+
+  // Account picker
+  String _getAccountDisplayName(String accountId) {
+    try {
+      final account = _accounts.firstWhere((a) => a.id == accountId);
+      return account.displayName;
+    } catch (_) {
+      return _tx.accountLast4 != null ? '••••${_tx.accountLast4}' : accountId;
+    }
+  }
+
+  void _showAccountPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return DraggableScrollableSheet(
+          initialChildSize: 0.45,
+          minChildSize: 0.3,
+          maxChildSize: 0.7,
+          expand: false,
+          builder: (ctx, sc) => Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Assign Account',
+                            style: theme.textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        if (_tx.accountId != null)
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _updateAccountId(null);
+                            },
+                            child: const Text('Remove',
+                                style: TextStyle(color: Colors.red)),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView(
+                  controller: sc,
+                  padding: const EdgeInsets.all(8),
+                  children: _accounts.map((account) {
+                    final isSelected = _tx.accountId == account.id;
+                    return ListTile(
+                      leading: Icon(
+                        account.type == AccountType.creditCard
+                            ? Icons.credit_card
+                            : account.type == AccountType.wallet
+                                ? Icons.account_balance_wallet
+                                : account.type == AccountType.upi
+                                    ? Icons.phone_android
+                                    : Icons.account_balance,
+                        color:
+                            isSelected ? theme.colorScheme.primary : null,
+                      ),
+                      title: Text(account.displayName),
+                      subtitle: Text(account.typeLabel),
+                      selected: isSelected,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _updateAccountId(account.id);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _updateAccountId(String? newAccountId) async {
+    await LocalStorageService.updateTransactionAccountId(
+        _tx.id, newAccountId);
+    final updated = newAccountId != null
+        ? _tx.copyWith(accountId: newAccountId)
+        : _tx.copyWith(clearAccountId: true);
+    setState(() => _tx = updated);
+    widget.onTransactionUpdated?.call(updated);
+    if (mounted) {
+      context.read<SmsService>().reloadFromCache();
     }
   }
 

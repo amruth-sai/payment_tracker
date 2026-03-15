@@ -181,6 +181,7 @@ class Transaction {
     bool clearNote = false,
     bool clearTag = false,
     bool clearCustomCategory = false,
+    bool clearAccountId = false,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -194,7 +195,7 @@ class Transaction {
       rawMessage: rawMessage ?? this.rawMessage,
       referenceId: referenceId ?? this.referenceId,
       balance: balance ?? this.balance,
-      accountId: accountId ?? this.accountId,
+      accountId: clearAccountId ? null : (accountId ?? this.accountId),
       isUserCorrected: isUserCorrected ?? this.isUserCorrected,
       isSalary: isSalary ?? this.isSalary,
       category: category ?? this.category,

@@ -159,19 +159,19 @@ class _WelcomePage extends StatelessWidget {
           const SizedBox(height: 32),
 
           // Features list
-          _FeatureItem(
+          const _FeatureItem(
             icon: Icons.group_work_outlined,
             title: 'Smart Organization',
             description: 'Group SMS senders under your actual bank accounts',
           ),
           const SizedBox(height: 16),
-          _FeatureItem(
+          const _FeatureItem(
             icon: Icons.auto_fix_high,
             title: 'AI-Powered Detection',
             description: 'Automatic suggestions based on your message history',
           ),
           const SizedBox(height: 16),
-          _FeatureItem(
+          const _FeatureItem(
             icon: Icons.tune,
             title: 'Full Control',
             description: 'Manually adjust and customize sender assignments',
@@ -440,10 +440,10 @@ class _DateRangeOption extends StatelessWidget {
         tileColor: isSelected
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
             : theme.colorScheme.surfaceContainerLowest,
-        leading: Radio<bool>(
-          value: true,
+        leading: RadioGroup<bool>(
           groupValue: isSelected,
           onChanged: (_) => onTap(),
+          child: const Radio<bool>(value: true),
         ),
         title: Text(
           title,

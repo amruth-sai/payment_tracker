@@ -113,7 +113,7 @@ class DiscoveredSender {
     } else if (daysSinceFirst <= 90) {
       return 'Last 3 months';
     } else {
-      return '${daysSinceFirst} days ago';
+      return '$daysSinceFirst days ago';
     }
   }
 }

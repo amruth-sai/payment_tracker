@@ -219,7 +219,7 @@ class _SenderGroupedReviewSheetState extends State<SenderGroupedReviewSheet> {
                               height: 18,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white))
-                          : Text('Confirm All'),
+                          : const Text('Confirm All'),
                     ),
                   ),
                 ],
@@ -273,13 +273,13 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
     return Container(
       decoration: BoxDecoration(
         color: isUserBank
-            ? theme.colorScheme.primaryContainer.withOpacity(0.3)
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
             : theme.colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isUserBank
-              ? theme.colorScheme.primary.withOpacity(0.5)
-              : theme.colorScheme.outline.withOpacity(0.2),
+              ? theme.colorScheme.primary.withValues(alpha: 0.5)
+              : theme.colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -291,7 +291,7 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: isUserBank
-                    ? theme.colorScheme.primary.withOpacity(0.15)
+                    ? theme.colorScheme.primary.withValues(alpha: 0.15)
                     : theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -436,23 +436,23 @@ class _TypeSelector extends StatelessWidget {
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: TransactionType.credit,
           child: Row(
             children: [
               Icon(Icons.add_circle, size: 16, color: Colors.green),
-              const SizedBox(width: 8),
-              const Text('Credit (Money In)'),
+              SizedBox(width: 8),
+              Text('Credit (Money In)'),
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: TransactionType.debit,
           child: Row(
             children: [
               Icon(Icons.remove_circle, size: 16, color: Colors.red),
-              const SizedBox(width: 8),
-              const Text('Debit (Money Out)'),
+              SizedBox(width: 8),
+              Text('Debit (Money Out)'),
             ],
           ),
         ),
@@ -463,8 +463,8 @@ class _TypeSelector extends StatelessWidget {
           color: currentType == null
               ? theme.colorScheme.surfaceContainerHighest
               : (currentType == TransactionType.credit
-                  ? Colors.green.withOpacity(0.15)
-                  : Colors.red.withOpacity(0.15)),
+                  ? Colors.green.withValues(alpha: 0.15)
+                  : Colors.red.withValues(alpha: 0.15)),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -523,7 +523,7 @@ class _TransactionTile extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
         decoration: BoxDecoration(
           color: isIgnored
-              ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)
+              ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
