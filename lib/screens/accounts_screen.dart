@@ -20,22 +20,26 @@ class _AccountsScreenState extends State<AccountsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAccounts();
+    _loadAccounts(detectNew: true);
   }
 
-  Future<void> _loadAccounts() async {
+  Future<void> _loadAccounts({bool detectNew = false}) async {
     setState(() => _isLoading = true);
 
-    // First, auto-detect any new accounts from transactions
-    await LocalStorageService.detectAccountsFromTransactions();
+    if (detectNew) {
+      // Only auto-detect new accounts on initial load or explicit refresh
+      await LocalStorageService.detectAccountsFromTransactions();
+    }
 
-    // Then load all accounts
+    // Load all accounts
     final accounts = await LocalStorageService.getAllAccounts();
 
-    setState(() {
-      _accounts = accounts;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _accounts = accounts;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -46,7 +50,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadAccounts,
+            onPressed: () => _loadAccounts(detectNew: true),
             tooltip: 'Re-detect accounts',
           ),
         ],
@@ -252,6 +256,12 @@ class _AccountsScreenState extends State<AccountsScreen> {
       await _loadAccounts();
       if (mounted) {
         context.read<SmsService>().reloadFromCache();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"${account.name}" deleted'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -267,6 +277,12 @@ class _AccountsScreenState extends State<AccountsScreen> {
       await _loadAccounts();
       if (mounted) {
         context.read<SmsService>().reloadFromCache();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"${result.name}" added'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     }
   }
@@ -282,6 +298,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
       await _loadAccounts();
       if (mounted) {
         context.read<SmsService>().reloadFromCache();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account updated'),
+          ),
+        );
       }
     }
   }
