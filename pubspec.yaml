@@ -20,6 +20,7 @@ dependencies:
   google_generative_ai: ^0.4.0 # Google Gemini AI
   sqflite: ^2.3.0             # Local SQLite database
   path: ^1.8.3                # Path utilities for database
+  uuid: ^4.0.0                # UUID generation for dynamic categories
 
 dev_dependencies:
   flutter_test:

@@ -663,7 +663,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
     if (amount >= 100000) {
       return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K';
+      return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(0);
   }
@@ -708,9 +708,9 @@ class _CycleStatItem extends StatelessWidget {
 
   String _formatAmount(double amount) {
     if (amount.abs() >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(1)}L';
+      return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount.abs() >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K';
+      return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(0);
   }
@@ -874,9 +874,9 @@ class _CycleDetailSheet extends StatelessWidget {
 
   String _formatAmount(double amount) {
     if (amount.abs() >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(1)}L';
+      return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount.abs() >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K';
+      return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(0);
   }
@@ -939,9 +939,9 @@ class _StatBox extends StatelessWidget {
 
   String _formatAmount(double amount) {
     if (amount.abs() >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(1)}L';
+      return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount.abs() >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K';
+      return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(0);
   }

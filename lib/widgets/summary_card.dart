@@ -113,7 +113,7 @@ class SummaryCard extends StatelessWidget {
 
   String _fmt(double v) {
     final abs = v.abs();
-    if (abs >= 100000) return '${(abs / 100000).toStringAsFixed(1)}L';
+    if (abs >= 100000) return '${(abs / 100000).toStringAsFixed(2)}L';
     return NumberFormat('#,##,###').format(abs.toInt());
   }
 }
@@ -165,7 +165,7 @@ class _FlowTile extends StatelessWidget {
   }
 
   String _fmt(double v) {
-    if (v >= 100000) return '${(v / 100000).toStringAsFixed(1)}L';
+    if (v >= 100000) return '${(v / 100000).toStringAsFixed(2)}L';
     return NumberFormat('#,##,###').format(v.toInt());
   }
 }

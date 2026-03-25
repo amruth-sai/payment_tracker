@@ -213,7 +213,7 @@ class TransactionCard extends StatelessWidget {
 
   String _formatAmount(double amount) {
     if (amount >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(1)}L';
+      return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount >= 1000) {
       final formatter = NumberFormat('#,##,###');
       return formatter.format(amount.toInt());

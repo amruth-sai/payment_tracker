@@ -908,14 +908,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
         currentCustomId: _tx.customCategoryId,
         customCategories: _customCategories,
         onBuiltInSelected: (cat) async {
+          // Keep custom category, just update standard category
           await LocalStorageService.updateTransactionCategory(_tx.id, cat);
-          await LocalStorageService.updateTransactionCustomCategory(
-              _tx.id, null);
-          final updated =
-              _tx.copyWith(category: cat, clearCustomCategory: true);
+          final updated = _tx.copyWith(category: cat);
           setState(() {
             _tx = updated;
-            _selectedCustomCategory = null;
           });
           widget.onTransactionUpdated?.call(updated);
           // Refresh in-memory list so all screens reflect the change instantly
@@ -924,6 +921,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           }
         },
         onCustomSelected: (custom) async {
+          // Keep standard category, just update custom category
           await LocalStorageService.updateTransactionCustomCategory(
               _tx.id, custom.id);
           final updated = _tx.copyWith(customCategoryId: custom.id);
@@ -938,9 +936,13 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           }
         },
         onClearCategory: () async {
-          await LocalStorageService.updateTransactionCustomCategory(
-              _tx.id, null);
-          final updated = _tx.copyWith(clearCustomCategory: true);
+          // Clear both standard and custom categories
+          await LocalStorageService.updateTransactionCategory(_tx.id, TransactionCategory.uncategorized);
+          await LocalStorageService.updateTransactionCustomCategory(_tx.id, null);
+          final updated = _tx.copyWith(
+            category: TransactionCategory.uncategorized,
+            clearCustomCategory: true,
+          );
           setState(() {
             _tx = updated;
             _selectedCustomCategory = null;

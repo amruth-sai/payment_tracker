@@ -1,5 +1,6 @@
 // lib/services/local_storage_service.dart
 
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart' hide Transaction;
 import 'package:path/path.dart';
 import '../models/transaction.dart';
@@ -9,13 +10,15 @@ import '../models/salary_cycle.dart';
 import '../models/budget.dart';
 import '../models/app_alert.dart';
 import '../models/custom_category.dart';
+import '../models/standard_category.dart';
+import '../models/category_preferences.dart';
 
 /// Local SQLite database for caching parsed transactions
 /// Avoids re-parsing already processed SMS messages
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 5; // v5: sender_mappings table for dynamic sender assignments
+  static const int _dbVersion = 6; // v6: dynamic standard categories system
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -61,6 +64,7 @@ class LocalStorageService {
         tag TEXT,
         is_ignored INTEGER DEFAULT 0,
         custom_category_id TEXT,
+        standard_category_id TEXT,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -171,6 +175,55 @@ class LocalStorageService {
       )
     ''');
 
+    // Table for standard categories (dynamic standard categories)
+    await db.execute('''
+      CREATE TABLE standard_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        emoji TEXT NOT NULL DEFAULT '🏷️',
+        color_value INTEGER NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    // Populate default standard categories
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final defaultCategories = [
+      ['food_dining', 'foodDining', 'Food & Dining', '🍕', 4294924800, 0], // Colors.orange.value
+      ['travel_transport', 'travelTransport', 'Travel & Transport', '🚗', 4278190335, 1], // Colors.blue.value
+      ['shopping', 'shopping', 'Shopping', '🛍️', 4287245282, 2], // Colors.purple.value
+      ['rent_housing', 'rentHousing', 'Rent & Housing', '🏠', 4280391411, 3], // Colors.brown.value
+      ['emi_loans', 'emiLoans', 'EMI & Loans', '💳', 4294198070, 4], // Colors.red.value
+      ['entertainment', 'entertainment', 'Entertainment', '🎬', 4291467747, 5], // Colors.pink.value
+      ['bills_utilities', 'billsUtilities', 'Bills & Utilities', '💡', 4294961664, 6], // Colors.yellow.value
+      ['health_medical', 'healthMedical', 'Health & Medical', '🏥', 4283215696, 7], // Colors.green.value
+      ['education', 'education', 'Education', '📚', 4281367748, 8], // Colors.indigo.value
+      ['salary_income', 'salaryIncome', 'Salary & Income', '💰', 4283002648, 9], // Colors.green.shade700.value
+      ['transfer', 'transfer', 'Transfer', '🔄', 4286611584, 10], // Colors.grey.value
+      ['cashback', 'cashback', 'Cashback', '🎁', 4278238420, 11], // Colors.teal.value
+      ['investment', 'investment', 'Investment', '📈', 4284513675, 12], // Colors.deepPurple.value
+      ['other', 'other', 'Other', '📌', 4285755919, 13], // Colors.blueGrey.value
+      ['uncategorized', 'uncategorized', 'Uncategorized', '❓', 4286611584, 14], // Colors.grey.shade500.value
+    ];
+
+    for (final category in defaultCategories) {
+      await db.insert('standard_categories', {
+        'id': category[0],
+        'name': category[1],
+        'display_name': category[2],
+        'emoji': category[3],
+        'color_value': category[4],
+        'is_default': 1,
+        'is_active': 1,
+        'sort_order': category[5],
+        'created_at': now,
+      });
+    }
+
     // Indexes for faster lookups
     await db.execute(
         'CREATE INDEX idx_transactions_date ON transactions(date DESC)');
@@ -182,6 +235,10 @@ class LocalStorageService {
         'CREATE INDEX idx_transactions_salary ON transactions(is_salary)');
     await db.execute(
         'CREATE INDEX idx_transactions_category ON transactions(category)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_standard_category ON transactions(standard_category_id)');
+    await db.execute(
+        'CREATE INDEX idx_standard_categories_active ON standard_categories(is_active)');
     await db.execute(
         'CREATE INDEX idx_alerts_read ON alerts(is_read)');
   }
@@ -329,6 +386,94 @@ class LocalStorageService {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_sender_mappings_account ON sender_mappings(account_id)');
     }
+    if (oldVersion < 6) {
+      // Create standard_categories table for dynamic standard categories
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS standard_categories (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          display_name TEXT NOT NULL,
+          emoji TEXT NOT NULL DEFAULT '🏷️',
+          color_value INTEGER NOT NULL,
+          is_default INTEGER DEFAULT 0,
+          is_active INTEGER DEFAULT 1,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+
+      // Add standard_category_id column to transactions table
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN standard_category_id TEXT');
+
+      // Populate with default standard categories
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final defaultCategories = [
+        ['food_dining', 'foodDining', 'Food & Dining', '🍕', 4294924800, 0], // Colors.orange.value
+        ['travel_transport', 'travelTransport', 'Travel & Transport', '🚗', 4278190335, 1], // Colors.blue.value
+        ['shopping', 'shopping', 'Shopping', '🛍️', 4287245282, 2], // Colors.purple.value
+        ['rent_housing', 'rentHousing', 'Rent & Housing', '🏠', 4280391411, 3], // Colors.brown.value
+        ['emi_loans', 'emiLoans', 'EMI & Loans', '💳', 4294198070, 4], // Colors.red.value
+        ['entertainment', 'entertainment', 'Entertainment', '🎬', 4291467747, 5], // Colors.pink.value
+        ['bills_utilities', 'billsUtilities', 'Bills & Utilities', '💡', 4294961664, 6], // Colors.yellow.value
+        ['health_medical', 'healthMedical', 'Health & Medical', '🏥', 4283215696, 7], // Colors.green.value
+        ['education', 'education', 'Education', '📚', 4281367748, 8], // Colors.indigo.value
+        ['salary_income', 'salaryIncome', 'Salary & Income', '💰', 4283002648, 9], // Colors.green.shade700.value
+        ['transfer', 'transfer', 'Transfer', '🔄', 4286611584, 10], // Colors.grey.value
+        ['cashback', 'cashback', 'Cashback', '🎁', 4278238420, 11], // Colors.teal.value
+        ['investment', 'investment', 'Investment', '📈', 4284513675, 12], // Colors.deepPurple.value
+        ['other', 'other', 'Other', '📌', 4285755919, 13], // Colors.blueGrey.value
+        ['uncategorized', 'uncategorized', 'Uncategorized', '❓', 4286611584, 14], // Colors.grey.shade500.value
+      ];
+
+      for (final category in defaultCategories) {
+        await db.insert('standard_categories', {
+          'id': category[0],
+          'name': category[1],
+          'display_name': category[2],
+          'emoji': category[3],
+          'color_value': category[4],
+          'is_default': 1,
+          'is_active': 1,
+          'sort_order': category[5],
+          'created_at': now,
+        });
+      }
+
+      // Migrate existing category enum values to standard_category_id references
+      final categoryMigrations = {
+        'foodDining': 'food_dining',
+        'travelTransport': 'travel_transport',
+        'shopping': 'shopping',
+        'rentHousing': 'rent_housing',
+        'emiLoans': 'emi_loans',
+        'entertainment': 'entertainment',
+        'billsUtilities': 'bills_utilities',
+        'healthMedical': 'health_medical',
+        'education': 'education',
+        'salaryIncome': 'salary_income',
+        'transfer': 'transfer',
+        'cashback': 'cashback',
+        'investment': 'investment',
+        'other': 'other',
+        'uncategorized': 'uncategorized',
+      };
+
+      for (final entry in categoryMigrations.entries) {
+        await db.update(
+          'transactions',
+          {'standard_category_id': entry.value},
+          where: 'category = ?',
+          whereArgs: [entry.key],
+        );
+      }
+
+      // Index on standard_category_id for fast filtering
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_standard_category ON transactions(standard_category_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_standard_categories_active ON standard_categories(is_active)');
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -358,6 +503,7 @@ class LocalStorageService {
         'is_user_corrected': tx.isUserCorrected ? 1 : 0,
         'is_salary': tx.isSalary ? 1 : 0,
         'category': tx.category?.name,
+        'standard_category_id': tx.standardCategoryId,
         'note': tx.note,
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
@@ -421,6 +567,7 @@ class LocalStorageService {
         'is_user_corrected': 1,
         'is_salary': tx.isSalary ? 1 : 0,
         'category': tx.category?.name,
+        'standard_category_id': tx.standardCategoryId,
         'note': tx.note,
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
@@ -487,6 +634,7 @@ class LocalStorageService {
               orElse: () => TransactionCategory.uncategorized,
             )
           : null,
+      standardCategoryId: row['standard_category_id'] as String?,
       note: row['note'] as String?,
       tag: row['tag'] as String?,
       isIgnored: (row['is_ignored'] as int?) == 1,
@@ -1178,6 +1326,129 @@ class LocalStorageService {
       where: 'custom_category_id = ?',
       whereArgs: [catId],
     );
+  }
+
+  // ==================== STANDARD CATEGORY OPERATIONS ====================
+
+  /// Get all standard categories (both default and user-created)
+  static Future<List<StandardCategory>> getAllStandardCategories({
+    bool? activeOnly,
+  }) async {
+    final db = await database;
+    final where = activeOnly == true ? 'is_active = ?' : null;
+    final whereArgs = activeOnly == true ? [1] : null;
+
+    final rows = await db.query(
+      'standard_categories',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'sort_order ASC, display_name ASC',
+    );
+    return rows.map((r) => StandardCategory.fromMap(r)).toList();
+  }
+
+  /// Get a standard category by ID
+  static Future<StandardCategory?> getStandardCategoryById(String id) async {
+    final db = await database;
+    final rows = await db.query(
+      'standard_categories',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return rows.isNotEmpty ? StandardCategory.fromMap(rows.first) : null;
+  }
+
+  /// Save (insert or replace) a standard category
+  static Future<void> saveStandardCategory(StandardCategory category) async {
+    final db = await database;
+    await db.insert(
+      'standard_categories',
+      category.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Update standard category active status
+  static Future<void> updateStandardCategoryStatus(String categoryId, bool isActive) async {
+    final db = await database;
+    await db.update(
+      'standard_categories',
+      {'is_active': isActive ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [categoryId],
+    );
+  }
+
+  /// Delete a user-created standard category (cannot delete default categories)
+  static Future<void> deleteStandardCategory(String categoryId) async {
+    final db = await database;
+
+    // First check if it's a default category
+    final category = await getStandardCategoryById(categoryId);
+    if (category?.isDefault == true) {
+      throw Exception('Cannot delete default categories. Use updateStandardCategoryStatus to disable instead.');
+    }
+
+    // Delete the category
+    await db.delete('standard_categories', where: 'id = ?', whereArgs: [categoryId]);
+
+    // Unlink from transactions (set to uncategorized)
+    await db.update(
+      'transactions',
+      {'standard_category_id': 'uncategorized'},
+      where: 'standard_category_id = ?',
+      whereArgs: [categoryId],
+    );
+  }
+
+  /// Update transaction standard category
+  static Future<void> updateTransactionStandardCategory(
+      String txId, String? standardCategoryId) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {'standard_category_id': standardCategoryId},
+      where: 'id = ?',
+      whereArgs: [txId],
+    );
+  }
+
+  /// Get category usage statistics
+  static Future<Map<String, int>> getStandardCategoryUsageStats() async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT standard_category_id, COUNT(*) as usage_count
+      FROM transactions
+      WHERE standard_category_id IS NOT NULL
+      GROUP BY standard_category_id
+    ''');
+
+    return Map.fromEntries(
+      rows.map((r) => MapEntry(
+        r['standard_category_id'] as String,
+        r['usage_count'] as int,
+      )),
+    );
+  }
+
+  // ==================== CATEGORY PREFERENCES ====================
+
+  /// Get category preferences (which standard categories are enabled)
+  static Future<CategoryPreferences> getCategoryPreferences() async {
+    final val = await getSetting('category_preferences');
+    if (val == null) return CategoryPreferences.defaultPreferences();
+    try {
+      final map = json.decode(val) as Map<String, dynamic>;
+      return CategoryPreferences.fromMap(map);
+    } catch (_) {
+      return CategoryPreferences.defaultPreferences();
+    }
+  }
+
+  /// Save category preferences
+  static Future<void> saveCategoryPreferences(CategoryPreferences prefs) async {
+    final jsonStr = json.encode(prefs.toMap());
+    await setSetting('category_preferences', jsonStr);
   }
 
   // ==================== ONBOARDING HELPERS ====================

@@ -439,7 +439,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
     if (amount >= 100000) {
       return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K';
+      return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(0);
   }
@@ -522,7 +522,7 @@ class _SummaryItem extends StatelessWidget {
     if (amount >= 100000) {
       return '${(amount / 100000).toStringAsFixed(2)}L';
     } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K';
+      return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(0);
   }

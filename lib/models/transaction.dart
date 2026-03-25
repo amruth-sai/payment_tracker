@@ -107,7 +107,8 @@ class Transaction {
   final String? accountId; // Link to Account
   final bool isUserCorrected; // User manually corrected this transaction
   final bool isSalary; // Marked as salary by user
-  final TransactionCategory? category; // Auto or manually tagged category
+  final TransactionCategory? category; // Auto or manually tagged category (deprecated - for backward compatibility)
+  final String? standardCategoryId; // New: References standard_categories table
   final String? note; // User-added personal note
   final String? tag; // Feature 1: User-defined label (e.g. "reimbursable", "split")
   final bool isIgnored; // Feature 2: If true, excluded from all summaries
@@ -128,7 +129,8 @@ class Transaction {
     this.accountId,
     this.isUserCorrected = false,
     this.isSalary = false,
-    this.category,
+    this.category, // Kept for backward compatibility
+    this.standardCategoryId,
     this.note,
     this.tag,
     this.isIgnored = false,
@@ -157,6 +159,12 @@ class Transaction {
 
   String get displayName => merchant ?? sender;
 
+  /// Get the effective category (prioritizes standardCategoryId over deprecated category enum)
+  String? get effectiveCategoryId => standardCategoryId ?? category?.name;
+
+  /// Check if transaction has any category assigned
+  bool get hasCategory => standardCategoryId != null || category != null;
+
   Transaction copyWith({
     String? id,
     double? amount,
@@ -173,6 +181,7 @@ class Transaction {
     bool? isUserCorrected,
     bool? isSalary,
     TransactionCategory? category,
+    String? standardCategoryId,
     String? note,
     String? tag,
     bool? isIgnored,
@@ -181,6 +190,7 @@ class Transaction {
     bool clearNote = false,
     bool clearTag = false,
     bool clearCustomCategory = false,
+    bool clearStandardCategory = false,
     bool clearAccountId = false,
   }) {
     return Transaction(
@@ -199,6 +209,7 @@ class Transaction {
       isUserCorrected: isUserCorrected ?? this.isUserCorrected,
       isSalary: isSalary ?? this.isSalary,
       category: category ?? this.category,
+      standardCategoryId: clearStandardCategory ? null : (standardCategoryId ?? this.standardCategoryId),
       note: clearNote ? null : (note ?? this.note),
       tag: clearTag ? null : (tag ?? this.tag),
       isIgnored: isIgnored ?? this.isIgnored,
