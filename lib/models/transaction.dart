@@ -114,6 +114,12 @@ class Transaction {
   final bool isIgnored; // Feature 2: If true, excluded from all summaries
   final String? customCategoryId; // Feature 3: Links to a user-created custom category
 
+  // Transfer linking fields
+  final String? transferGroupId; // Groups related transfer transactions
+  final String? transferPartnerId; // Direct link to partner transaction ID
+  final bool isTransferSource; // True if this is the debit side of a transfer
+  final bool isTransferDestination; // True if this is the credit side of a transfer
+
   Transaction({
     required this.id,
     required this.amount,
@@ -135,6 +141,11 @@ class Transaction {
     this.tag,
     this.isIgnored = false,
     this.customCategoryId,
+    // Transfer linking fields
+    this.transferGroupId,
+    this.transferPartnerId,
+    this.isTransferSource = false,
+    this.isTransferDestination = false,
   });
 
   bool get isCredit => type == TransactionType.credit;
@@ -158,6 +169,15 @@ class Transaction {
   }
 
   String get displayName => merchant ?? sender;
+
+  /// Check if this transaction is part of a transfer (either source or destination)
+  bool get isPartOfTransfer => transferGroupId != null;
+
+  /// Check if this transaction has a transfer partner
+  bool get hasTransferPartner => transferPartnerId != null;
+
+  /// Check if this is a complete transfer pair (has both group and partner)
+  bool get isCompleteTransfer => isPartOfTransfer && hasTransferPartner;
 
   /// Get the effective category (prioritizes standardCategoryId over deprecated category enum)
   String? get effectiveCategoryId => standardCategoryId ?? category?.name;
@@ -186,12 +206,19 @@ class Transaction {
     String? tag,
     bool? isIgnored,
     String? customCategoryId,
+    // Transfer fields
+    String? transferGroupId,
+    String? transferPartnerId,
+    bool? isTransferSource,
+    bool? isTransferDestination,
     // Sentinels to explicitly clear nullable fields
     bool clearNote = false,
     bool clearTag = false,
     bool clearCustomCategory = false,
     bool clearStandardCategory = false,
     bool clearAccountId = false,
+    bool clearTransferGroup = false,
+    bool clearTransferPartner = false,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -214,6 +241,10 @@ class Transaction {
       tag: clearTag ? null : (tag ?? this.tag),
       isIgnored: isIgnored ?? this.isIgnored,
       customCategoryId: clearCustomCategory ? null : (customCategoryId ?? this.customCategoryId),
+      transferGroupId: clearTransferGroup ? null : (transferGroupId ?? this.transferGroupId),
+      transferPartnerId: clearTransferPartner ? null : (transferPartnerId ?? this.transferPartnerId),
+      isTransferSource: isTransferSource ?? this.isTransferSource,
+      isTransferDestination: isTransferDestination ?? this.isTransferDestination,
     );
   }
 }

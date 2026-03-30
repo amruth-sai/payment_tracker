@@ -9,6 +9,7 @@ import '../models/custom_category.dart';
 import '../models/account.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
+import '../services/transfer_service.dart';
 
 class TransactionDetailSheet extends StatefulWidget {
   final Transaction tx;
@@ -470,6 +471,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                 if (_tx.referenceId != null)
                   _DetailRow('Reference ID', _tx.referenceId!, theme,
                       copyable: true),
+
+                // Transfer information section
+                ..._buildTransferSection(theme),
               ],
             ),
           ),
@@ -955,6 +959,144 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
         },
       ),
     );
+  }
+
+  /// Build transfer information section
+  List<Widget> _buildTransferSection(ThemeData theme) {
+    if (!_tx.isPartOfTransfer) {
+      return [];
+    }
+
+    final widgets = <Widget>[];
+
+    // Add divider before transfer section
+    widgets.add(const SizedBox(height: 8));
+    widgets.add(Divider(color: theme.colorScheme.outlineVariant));
+    widgets.add(const SizedBox(height: 8));
+
+    // Transfer header
+    widgets.add(
+      Row(
+        children: [
+          const Icon(
+            Icons.swap_horiz_rounded,
+            size: 18,
+            color: Color(0xFF1976D2),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Transfer Information',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1976D2),
+            ),
+          ),
+        ],
+      ),
+    );
+    widgets.add(const SizedBox(height: 8));
+
+    // Transfer type
+    if (_tx.isTransferSource) {
+      widgets.add(_DetailRow('Transfer Type', 'Money Out (Source)', theme));
+    } else if (_tx.isTransferDestination) {
+      widgets.add(_DetailRow('Transfer Type', 'Money In (Destination)', theme));
+    }
+
+    // Transfer group ID
+    if (_tx.transferGroupId != null) {
+      widgets.add(_DetailRow('Transfer Group', _tx.transferGroupId!.substring(0, 8), theme));
+    }
+
+    // Partner transaction info
+    if (_tx.transferPartnerId != null) {
+      widgets.add(_DetailRow('Partner Transaction', _tx.transferPartnerId!.substring(0, 8), theme));
+
+      // Add button to view partner transaction
+      widgets.add(const SizedBox(height: 8));
+      widgets.add(
+        OutlinedButton.icon(
+          onPressed: _viewPartnerTransaction,
+          icon: const Icon(Icons.open_in_new_rounded, size: 16),
+          label: Text(_tx.isTransferSource ? 'View Destination' : 'View Source'),
+          style: OutlinedButton.styleFrom(
+            textStyle: const TextStyle(fontSize: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            foregroundColor: const Color(0xFF1976D2),
+            side: const BorderSide(color: Color(0xFF1976D2)),
+          ),
+        ),
+      );
+    }
+
+    // Unmerge button
+    widgets.add(const SizedBox(height: 8));
+    widgets.add(
+      OutlinedButton.icon(
+        onPressed: _unmergeTransfer,
+        icon: const Icon(Icons.call_split_rounded, size: 16),
+        label: const Text('Unmerge Transfer'),
+        style: OutlinedButton.styleFrom(
+          textStyle: const TextStyle(fontSize: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          foregroundColor: Colors.orange,
+          side: const BorderSide(color: Colors.orange),
+        ),
+      ),
+    );
+
+    return widgets;
+  }
+
+  Future<void> _viewPartnerTransaction() async {
+    if (_tx.transferPartnerId == null) return;
+
+    try {
+      final allTransactions = context.read<SmsService>().transactions;
+      final partnerTransaction = allTransactions.firstWhere(
+        (t) => t.id == _tx.transferPartnerId,
+      );
+
+      if (mounted) {
+        Navigator.of(context).pop(); // Close current sheet
+        TransactionDetailSheet.show(context, partnerTransaction);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Partner transaction not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _unmergeTransfer() async {
+    try {
+      await TransferService.unmergeTransfer(_tx);
+
+      if (mounted) {
+        context.read<SmsService>().reloadFromCache();
+        Navigator.of(context).pop(); // Close the sheet
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transfer unmerged successfully'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error unmerging transfer: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 

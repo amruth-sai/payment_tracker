@@ -12,13 +12,14 @@ import '../models/app_alert.dart';
 import '../models/custom_category.dart';
 import '../models/standard_category.dart';
 import '../models/category_preferences.dart';
+import '../constants/transfer_constants.dart';
 
 /// Local SQLite database for caching parsed transactions
 /// Avoids re-parsing already processed SMS messages
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 6; // v6: dynamic standard categories system
+  static const int _dbVersion = 7; // v7: transfer linking system
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -474,6 +475,24 @@ class LocalStorageService {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_standard_categories_active ON standard_categories(is_active)');
     }
+
+    if (oldVersion < 7) {
+      // Add transfer linking columns to transactions table
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN transfer_group_id TEXT');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN transfer_partner_id TEXT');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN is_transfer_source INTEGER DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE transactions ADD COLUMN is_transfer_destination INTEGER DEFAULT 0');
+
+      // Add indexes for transfer queries
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_transfer_group ON transactions(transfer_group_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_transfer_partner ON transactions(transfer_partner_id)');
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -508,6 +527,10 @@ class LocalStorageService {
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
         'custom_category_id': tx.customCategoryId,
+        TransferConstants.transferGroupIdField: tx.transferGroupId,
+        TransferConstants.transferPartnerIdField: tx.transferPartnerId,
+        TransferConstants.isTransferSourceField: tx.isTransferSource ? 1 : 0,
+        TransferConstants.isTransferDestinationField: tx.isTransferDestination ? 1 : 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -545,6 +568,10 @@ class LocalStorageService {
           'tag': tx.tag,
           'is_ignored': tx.isIgnored ? 1 : 0,
           'custom_category_id': tx.customCategoryId,
+          'transfer_group_id': tx.transferGroupId,
+          'transfer_partner_id': tx.transferPartnerId,
+          'is_transfer_source': tx.isTransferSource ? 1 : 0,
+          'is_transfer_destination': tx.isTransferDestination ? 1 : 0,
           'created_at': DateTime.now().millisecondsSinceEpoch,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -572,10 +599,52 @@ class LocalStorageService {
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
         'custom_category_id': tx.customCategoryId,
+        TransferConstants.transferGroupIdField: tx.transferGroupId,
+        TransferConstants.transferPartnerIdField: tx.transferPartnerId,
+        TransferConstants.isTransferSourceField: tx.isTransferSource ? 1 : 0,
+        TransferConstants.isTransferDestinationField: tx.isTransferDestination ? 1 : 0,
       },
       where: 'id = ?',
       whereArgs: [tx.id],
     );
+  }
+
+  /// Update multiple transactions atomically (for transfer operations)
+  static Future<void> updateTransactionsAtomic(List<Transaction> transactions) async {
+    final db = await database;
+
+    // Use database transaction for atomic operation
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+
+      for (final tx in transactions) {
+        batch.update(
+          'transactions',
+          {
+            'type': tx.type.name,
+            'source': tx.source.name,
+            'merchant': tx.merchant,
+            'account_id': tx.accountId,
+            'is_user_corrected': 1,
+            'is_salary': tx.isSalary ? 1 : 0,
+            'category': tx.category?.name,
+            'standard_category_id': tx.standardCategoryId,
+            'note': tx.note,
+            'tag': tx.tag,
+            'is_ignored': tx.isIgnored ? 1 : 0,
+            'custom_category_id': tx.customCategoryId,
+            'transfer_group_id': tx.transferGroupId,
+            'transfer_partner_id': tx.transferPartnerId,
+            'is_transfer_source': tx.isTransferSource ? 1 : 0,
+            'is_transfer_destination': tx.isTransferDestination ? 1 : 0,
+          },
+          where: 'id = ?',
+          whereArgs: [tx.id],
+        );
+      }
+
+      await batch.commit(noResult: true);
+    });
   }
 
   /// Get all cached transactions
@@ -639,6 +708,10 @@ class LocalStorageService {
       tag: row['tag'] as String?,
       isIgnored: (row['is_ignored'] as int?) == 1,
       customCategoryId: row['custom_category_id'] as String?,
+      transferGroupId: row[TransferConstants.transferGroupIdField] as String?,
+      transferPartnerId: row[TransferConstants.transferPartnerIdField] as String?,
+      isTransferSource: (row[TransferConstants.isTransferSourceField] as int?) == 1,
+      isTransferDestination: (row[TransferConstants.isTransferDestinationField] as int?) == 1,
     );
   }
 

@@ -4,12 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/transfer_service.dart';
 import '../models/transaction.dart';
+import '../models/merged_transfer.dart';
 import '../models/salary_cycle.dart';
 import '../models/custom_category.dart';
 import '../widgets/transaction_card.dart';
+import '../widgets/merged_transfer_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
 import '../utils/date_utils.dart';
+import '../utils/format_utils.dart';
 
 class AllTransactionsScreen extends StatefulWidget {
   final int filter;
@@ -505,47 +509,202 @@ class _TxList extends StatelessWidget {
       );
     }
 
+    // Process transactions using existing utilities
+    final mergedTransfers = TransferService.getMergedTransfers(transactions);
+    final standaloneTransactions = TransferService.getStandaloneTransactions(transactions);
+
+    // Create unified display items list
+    final displayItems = <dynamic>[];
+    displayItems.addAll(mergedTransfers);
+    displayItems.addAll(standaloneTransactions);
+
+    // Sort according to the specified order
+    if (sortOrder != SortOrder.none) {
+      displayItems.sort((a, b) {
+        try {
+          final double amountA = a is MergedTransfer ? a.amount : (a as Transaction).amount;
+          final double amountB = b is MergedTransfer ? b.amount : (b as Transaction).amount;
+
+          return sortOrder == SortOrder.ascending
+              ? amountA.compareTo(amountB)
+              : amountB.compareTo(amountA);
+        } catch (e) {
+          return 0; // Treat as equal if comparison fails
+        }
+      });
+    } else {
+      // Sort by date (newest first)
+      displayItems.sort((a, b) {
+        try {
+          final DateTime dateA = a is MergedTransfer ? a.date : (a as Transaction).date;
+          final DateTime dateB = b is MergedTransfer ? b.date : (b as Transaction).date;
+          return dateB.compareTo(dateA);
+        } catch (e) {
+          return 0; // Treat as equal if comparison fails
+        }
+      });
+    }
+
+    final processedData = _ProcessedTransactionData(
+      mergedTransfers: mergedTransfers,
+      standaloneTransactions: standaloneTransactions,
+      displayItems: displayItems,
+    );
+
+    // Data consistency validation
+    final totalOriginalCount = transactions.length;
+    final mergedTransactionCount = processedData.mergedTransfers.length * 2;
+    final standaloneCount = processedData.standaloneTransactions.length;
+    final totalDisplayCount = mergedTransactionCount + standaloneCount;
+
+    // Log inconsistencies for debugging
+    if (totalDisplayCount != totalOriginalCount) {
+      debugPrint('⚠️  Transaction display inconsistency detected:');
+      debugPrint('   Original transactions: $totalOriginalCount');
+      debugPrint('   Merged transfers: ${processedData.mergedTransfers.length} (representing $mergedTransactionCount transactions)');
+      debugPrint('   Standalone transactions: $standaloneCount');
+      debugPrint('   Total display items: ${processedData.mergedTransfers.length + standaloneCount}');
+      debugPrint('   Expected total: $totalDisplayCount vs Actual: $totalOriginalCount');
+
+      // Identify problematic transactions
+      final mergedTransactionIds = <String>{};
+      for (final mt in processedData.mergedTransfers) {
+        mergedTransactionIds.add(mt.sourceTransaction.id);
+        mergedTransactionIds.add(mt.destinationTransaction.id);
+      }
+      final standaloneTransactionIds = processedData.standaloneTransactions.map((t) => t.id).toSet();
+
+      for (final tx in transactions) {
+        final inMerged = mergedTransactionIds.contains(tx.id);
+        final inStandalone = standaloneTransactionIds.contains(tx.id);
+
+        if (!inMerged && !inStandalone) {
+          debugPrint('   Missing transaction: ${tx.id} (${tx.type.name}, transferGroup: ${tx.transferGroupId})');
+        } else if (inMerged && inStandalone) {
+          debugPrint('   Duplicate transaction: ${tx.id} appears in both merged and standalone lists');
+        }
+      }
+    }
+
+    // Use pre-processed display items for better performance.
+    // Keep the original `displayItems` list to avoid redefining it in the same scope.
+
     // For amount sorting, show flat list without daily grouping
     if (sortOrder != SortOrder.none) {
       return ListView.builder(
-        itemCount: transactions.length,
+        itemCount: displayItems.length,
         itemBuilder: (context, i) {
-          final tx = transactions[i];
-          return TransactionCard(
-            tx: tx,
-            accountDisplayName: context.read<SmsService>().getAccountDisplayName(
-                tx.accountId, tx.accountLast4),
-            onTap: () => TransactionDetailSheet.show(context, tx),
-            onSwipeIgnore: onSwipeIgnore,
-            onSwipeToggleType: onSwipeToggleType,
-          );
+          try {
+            final item = displayItems[i];
+
+            if (item is MergedTransfer) {
+              return MergedTransferCard(
+                mergedTransfer: item,
+                onTap: () => _showMergedTransferDetail(context, item),
+                onSwipeUnmerge: (mergedTransfer) => _handleUnmergeTransfer(context, mergedTransfer),
+                onSwipeIgnore: (mergedTransfer) => _handleIgnoreTransfer(context, mergedTransfer),
+              );
+            } else if (item is Transaction) {
+              final tx = item;
+              return TransactionCard(
+                tx: tx,
+                accountDisplayName: context.read<SmsService>().getAccountDisplayName(
+                    tx.accountId, tx.accountLast4),
+                onTap: () => TransactionDetailSheet.show(context, tx),
+                onSwipeIgnore: onSwipeIgnore,
+                onSwipeToggleType: onSwipeToggleType,
+              );
+            } else {
+              // Fallback for unknown item type
+              debugPrint('⚠️  Unknown item type in display list at index $i: ${item.runtimeType}');
+              return Container(
+                margin: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  border: Border.all(color: Colors.red, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Error: Invalid transaction data',
+                  style: TextStyle(color: Colors.red),
+                ),
+              );
+            }
+          } catch (e) {
+            debugPrint('⚠️  Error rendering item at index $i: $e');
+            return Container(
+              margin: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                border: Border.all(color: Colors.orange, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Error displaying transaction',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Index: $i\nError: $e',
+                    style: const TextStyle(
+                      color: Colors.orange,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
         },
       );
     }
 
     // For default sorting, group by date while preserving sort order within each day
-    final grouped = <String, List<Transaction>>{};
-    for (final tx in transactions) {
-      final key = AppDateUtils.formatDateKey(tx.date);
-      grouped.putIfAbsent(key, () => []).add(tx);
+    final grouped = <String, List<dynamic>>{};
+    for (final item in displayItems) {
+      try {
+        final DateTime date = item is MergedTransfer ? item.date : (item as Transaction).date;
+        final key = AppDateUtils.formatDateKey(date);
+        grouped.putIfAbsent(key, () => []).add(item);
+      } catch (e) {
+        debugPrint('⚠️  Error grouping item by date: $e');
+        // Skip this item if date grouping fails
+      }
     }
 
     // Sort the date keys chronologically (newest first)
     final keys = grouped.keys.toList();
-    keys.sort((a, b) {
-      final dateA = AppDateUtils.parseDateKey(a);
-      final dateB = AppDateUtils.parseDateKey(b);
-      // Keep chronological order (newest first)
-      return dateB.compareTo(dateA);
-    });
-
-    // The transactions within each day maintain their original sort order from _filterTransactions()
+    try {
+      keys.sort((a, b) {
+        try {
+          final dateA = AppDateUtils.parseDateKey(a);
+          final dateB = AppDateUtils.parseDateKey(b);
+          return dateB.compareTo(dateA);
+        } catch (e) {
+          debugPrint('⚠️  Error parsing date keys for sorting: $e');
+          return 0; // Treat as equal if parsing fails
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️  Error sorting date keys: $e');
+      // Continue with unsorted keys
+    }
 
     return ListView.builder(
       itemCount: keys.length,
       itemBuilder: (context, i) {
         final key = keys[i];
-        final txs = grouped[key]!;
+        final items = grouped[key]!;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -559,19 +718,698 @@ class _TxList extends StatelessWidget {
                     ),
               ),
             ),
-            ...txs.map(
-              (tx) => TransactionCard(
-                tx: tx,
-                accountDisplayName: context.read<SmsService>().getAccountDisplayName(
-                    tx.accountId, tx.accountLast4),
-                onTap: () => TransactionDetailSheet.show(context, tx),
-                onSwipeIgnore: onSwipeIgnore,
-                onSwipeToggleType: onSwipeToggleType,
-              ),
-            ),
+            ...items.map((item) {
+              try {
+                if (item is MergedTransfer) {
+                  return MergedTransferCard(
+                    mergedTransfer: item,
+                    onTap: () => _showMergedTransferDetail(context, item),
+                    onSwipeUnmerge: (mergedTransfer) => _handleUnmergeTransfer(context, mergedTransfer),
+                    onSwipeIgnore: (mergedTransfer) => _handleIgnoreTransfer(context, mergedTransfer),
+                  );
+                } else if (item is Transaction) {
+                  final tx = item;
+                  return TransactionCard(
+                    tx: tx,
+                    accountDisplayName: context.read<SmsService>().getAccountDisplayName(
+                        tx.accountId, tx.accountLast4),
+                    onTap: () => TransactionDetailSheet.show(context, tx),
+                    onSwipeIgnore: onSwipeIgnore,
+                    onSwipeToggleType: onSwipeToggleType,
+                  );
+                } else {
+                  debugPrint('⚠️  Unknown item type in grouped display: ${item.runtimeType}');
+                  return Container(
+                    margin: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      border: Border.all(color: Colors.red, width: 1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Error: Invalid grouped transaction data',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  );
+                }
+              } catch (e) {
+                debugPrint('⚠️  Error rendering grouped item: $e');
+                return Container(
+                  margin: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    border: Border.all(color: Colors.orange, width: 1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Error in grouped transaction',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Error: $e',
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            }),
           ],
         );
       },
     );
   }
+
+  void _showMergedTransferDetail(BuildContext context, MergedTransfer mergedTransfer) {
+    try {
+      debugPrint('🔄 Opening merged transfer detail for group: ${mergedTransfer.transferGroupId}');
+
+      // Show a custom detail sheet for merged transfers
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _MergedTransferDetailSheet(mergedTransfer: mergedTransfer),
+      ).catchError((error) {
+        if (!context.mounted) return;
+        debugPrint('❌ Error showing merged transfer detail sheet: $error');
+        // Fallback: show simple dialog
+        _showSimpleMergedTransferDialog(context, mergedTransfer);
+      });
+    } catch (e) {
+      debugPrint('❌ Error in _showMergedTransferDetail: $e');
+      // Fallback to simple dialog
+      _showSimpleMergedTransferDialog(context, mergedTransfer);
+    }
+  }
+
+  void _showSimpleMergedTransferDialog(BuildContext context, MergedTransfer mergedTransfer) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.swap_horiz_rounded, color: Color(0xFF1976D2)),
+            SizedBox(width: 8),
+            Text('Transfer Details'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              FormatUtils.formatCurrency(mergedTransfer.amount),
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1976D2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('From: ${mergedTransfer.sourceAccountName}'),
+            const SizedBox(height: 8),
+            Text('To: ${mergedTransfer.destinationAccountName}'),
+            const SizedBox(height: 8),
+            Text('Date: ${FormatUtils.formatDateTime(mergedTransfer.date)}'),
+            if (mergedTransfer.note != null) ...[
+              const SizedBox(height: 8),
+              Text('Note: ${mergedTransfer.note}'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              try {
+                Navigator.of(context).pop();
+                await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
+                if (context.mounted) {
+                  context.read<SmsService>().reloadFromCache();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Transfer unmerged successfully'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error unmerging transfer: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Unmerge'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleUnmergeTransfer(BuildContext context, MergedTransfer mergedTransfer) async {
+    try {
+      // Unmerge the transfer
+      await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
+
+      if (context.mounted) {
+        context.read<SmsService>().reloadFromCache();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transfer unmerged successfully'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error unmerging transfer: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleIgnoreTransfer(BuildContext context, MergedTransfer mergedTransfer) async {
+    try {
+      // Ignore both transactions in the transfer atomically
+      final updatedSource = mergedTransfer.sourceTransaction.copyWith(isIgnored: true);
+      final updatedDestination = mergedTransfer.destinationTransaction.copyWith(isIgnored: true);
+
+      // Use atomic update to ensure both transactions are updated together
+      await LocalStorageService.updateTransactionsAtomic([updatedSource, updatedDestination]);
+
+      if (context.mounted) {
+        context.read<SmsService>().reloadFromCache();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transfer ignored successfully'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error ignoring transfer: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+}
+
+/// Detail sheet for merged transfers
+class _MergedTransferDetailSheet extends StatelessWidget {
+  final MergedTransfer mergedTransfer;
+
+  const _MergedTransferDetailSheet({required this.mergedTransfer});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const transferColor = Color(0xFF1976D2);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                height: 4,
+                width: 40,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Content
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    // Title
+                    Row(
+                      children: [
+                        const Icon(Icons.swap_horiz_rounded, color: transferColor, size: 28),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Transfer Details',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: transferColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Amount
+                    Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            FormatUtils.formatCurrency(mergedTransfer.amount),
+                            style: theme.textTheme.displayMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: transferColor,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: transferColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'Account Transfer',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: transferColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Transfer path
+                    _buildTransferPath(context),
+                    const SizedBox(height: 24),
+
+                    // Debug info (only show if there are potential issues)
+                    if (_hasDebugInfo(mergedTransfer)) ...[
+                      _buildDebugInfo(context, mergedTransfer),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // Transaction details
+                    _buildTransactionDetails(
+                      context,
+                      'From Account',
+                      mergedTransfer.sourceTransaction,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTransactionDetails(
+                      context,
+                      'To Account',
+                      mergedTransfer.destinationTransaction,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Actions
+                    _buildActionButtons(context),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  bool _hasDebugInfo(MergedTransfer mergedTransfer) {
+    // Show debug info if there are potential data integrity issues
+    return mergedTransfer.sourceTransaction.transferPartnerId != mergedTransfer.destinationTransaction.id ||
+           mergedTransfer.destinationTransaction.transferPartnerId != mergedTransfer.sourceTransaction.id ||
+           !mergedTransfer.sourceTransaction.isTransferSource ||
+           !mergedTransfer.destinationTransaction.isTransferDestination;
+  }
+
+  Widget _buildDebugInfo(BuildContext context, MergedTransfer mergedTransfer) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bug_report, size: 16, color: Colors.orange),
+              const SizedBox(width: 6),
+              Text(
+                'Debug Information',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Transfer Group: ${mergedTransfer.transferGroupId}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 10,
+            ),
+          ),
+          Text(
+            'Source ID: ${mergedTransfer.sourceTransaction.id}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 10,
+            ),
+          ),
+          Text(
+            'Dest ID: ${mergedTransfer.destinationTransaction.id}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 10,
+            ),
+          ),
+          if (mergedTransfer.sourceTransaction.transferPartnerId != mergedTransfer.destinationTransaction.id)
+            const Text(
+              '⚠️ Source partner ID mismatch',
+              style: TextStyle(color: Colors.red, fontSize: 10),
+            ),
+          if (mergedTransfer.destinationTransaction.transferPartnerId != mergedTransfer.sourceTransaction.id)
+            const Text(
+              '⚠️ Destination partner ID mismatch',
+              style: TextStyle(color: Colors.red, fontSize: 10),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransferPath(BuildContext context) {
+    final theme = Theme.of(context);
+    const transferColor = Color(0xFF1976D2);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: transferColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: transferColor.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'From',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  mergedTransfer.sourceAccountName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.arrow_forward_rounded,
+            color: transferColor,
+            size: 24,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'To',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  mergedTransfer.destinationAccountName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.end,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionDetails(BuildContext context, String title, Transaction transaction) {
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildDetailRow('Date', FormatUtils.formatDateTime(transaction.date)),
+            if (transaction.referenceId != null)
+              _buildDetailRow('Reference ID', transaction.referenceId!),
+            _buildDetailRow('Payment Method', transaction.sourceLabel),
+            if (transaction.balance != null)
+              _buildDetailRow('Balance', FormatUtils.formatCurrency(transaction.balance!)),
+            if (transaction.note != null && transaction.note!.isNotEmpty)
+              _buildDetailRow('Note', transaction.note!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(BuildContext context) {
+    return Column(
+      children: [
+        // Primary actions row
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  try {
+                    await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                      context.read<SmsService>().reloadFromCache();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Transfer unmerged successfully'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error unmerging transfer: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.call_split_rounded),
+                label: const Text('Unmerge'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+                label: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // View individual transactions row
+        Row(
+          children: [
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _showTransaction(context, mergedTransfer.sourceTransaction, 'From Account'),
+                icon: const Icon(Icons.arrow_upward, size: 16),
+                label: const Text('View From', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _showTransaction(context, mergedTransfer.destinationTransaction, 'To Account'),
+                icon: const Icon(Icons.arrow_downward, size: 16),
+                label: const Text('View To', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showTransaction(BuildContext context, Transaction transaction, String title) {
+    try {
+      // Close current modal first
+      Navigator.of(context).pop();
+      // Then show transaction details
+      TransactionDetailSheet.show(context, transaction);
+    } catch (e) {
+      // If there's an error, show a simple dialog with transaction info
+      Navigator.of(context).pop(); // Close current modal
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('$title Details'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Amount: ${FormatUtils.formatCurrency(transaction.amount)}'),
+              const SizedBox(height: 8),
+              Text('Date: ${FormatUtils.formatDateTime(transaction.date)}'),
+              const SizedBox(height: 8),
+              Text('Type: ${transaction.type.name.toUpperCase()}'),
+              if (transaction.merchant != null) ...[
+                const SizedBox(height: 8),
+                Text('Merchant: ${transaction.merchant}'),
+              ],
+              if (transaction.referenceId != null) ...[
+                const SizedBox(height: 8),
+                Text('Reference: ${transaction.referenceId}'),
+              ],
+              if (transaction.balance != null) ...[
+                const SizedBox(height: 8),
+                Text('Balance: ${FormatUtils.formatCurrency(transaction.balance!)}'),
+              ],
+              const SizedBox(height: 16),
+              Text(
+                'Error loading full details: $e',
+                style: const TextStyle(
+                  color: Colors.orange,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+}
+
+/// Helper class to store processed transaction data
+class _ProcessedTransactionData {
+  final List<MergedTransfer> mergedTransfers;
+  final List<Transaction> standaloneTransactions;
+  final List<dynamic> displayItems;
+
+  const _ProcessedTransactionData({
+    required this.mergedTransfers,
+    required this.standaloneTransactions,
+    required this.displayItems,
+  });
 }

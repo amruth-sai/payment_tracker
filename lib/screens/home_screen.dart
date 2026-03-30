@@ -23,6 +23,7 @@ import 'emi_tracker_screen.dart';
 import 'alerts_screen.dart';
 import 'custom_categories_screen.dart';
 import 'tracking_settings_screen.dart';
+import 'transfer_management_screen.dart';
 import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -262,6 +263,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
           ],
+        ),
+        IconButton(
+          icon: const Icon(Icons.swap_horiz_rounded),
+          tooltip: 'Transfer Management',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TransferManagementScreen()),
+            );
+          },
         ),
         IconButton(
           icon: const Icon(Icons.settings_outlined),
