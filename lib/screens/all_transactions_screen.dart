@@ -9,6 +9,7 @@ import '../models/salary_cycle.dart';
 import '../models/custom_category.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
+import '../utils/date_utils.dart';
 
 class AllTransactionsScreen extends StatefulWidget {
   final int filter;
@@ -311,6 +312,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                     _TxList(
                         transactions: _filter(sms.transactions),
                         search: _search,
+                        sortOrder: _sortOrder,
                         onSwipeIgnore: (tx) =>
                             _handleSwipeIgnore(context, tx),
                         onSwipeToggleType: (tx) =>
@@ -318,6 +320,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                     _TxList(
                         transactions: _filter(sms.credits),
                         search: _search,
+                        sortOrder: _sortOrder,
                         onSwipeIgnore: (tx) =>
                             _handleSwipeIgnore(context, tx),
                         onSwipeToggleType: (tx) =>
@@ -325,6 +328,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                     _TxList(
                         transactions: _filter(sms.debits),
                         search: _search,
+                        sortOrder: _sortOrder,
                         onSwipeIgnore: (tx) =>
                             _handleSwipeIgnore(context, tx),
                         onSwipeToggleType: (tx) =>
@@ -469,12 +473,14 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
 class _TxList extends StatelessWidget {
   final List<Transaction> transactions;
   final String search;
+  final SortOrder sortOrder;
   final Function(Transaction)? onSwipeIgnore;
   final Function(Transaction)? onSwipeToggleType;
 
   const _TxList({
     required this.transactions,
     required this.search,
+    required this.sortOrder,
     this.onSwipeIgnore,
     this.onSwipeToggleType,
   });
@@ -499,14 +505,41 @@ class _TxList extends StatelessWidget {
       );
     }
 
-    // Group by date
+    // For amount sorting, show flat list without daily grouping
+    if (sortOrder != SortOrder.none) {
+      return ListView.builder(
+        itemCount: transactions.length,
+        itemBuilder: (context, i) {
+          final tx = transactions[i];
+          return TransactionCard(
+            tx: tx,
+            accountDisplayName: context.read<SmsService>().getAccountDisplayName(
+                tx.accountId, tx.accountLast4),
+            onTap: () => TransactionDetailSheet.show(context, tx),
+            onSwipeIgnore: onSwipeIgnore,
+            onSwipeToggleType: onSwipeToggleType,
+          );
+        },
+      );
+    }
+
+    // For default sorting, group by date while preserving sort order within each day
     final grouped = <String, List<Transaction>>{};
     for (final tx in transactions) {
-      final key = _dateKey(tx.date);
+      final key = AppDateUtils.formatDateKey(tx.date);
       grouped.putIfAbsent(key, () => []).add(tx);
     }
 
+    // Sort the date keys chronologically (newest first)
     final keys = grouped.keys.toList();
+    keys.sort((a, b) {
+      final dateA = AppDateUtils.parseDateKey(a);
+      final dateB = AppDateUtils.parseDateKey(b);
+      // Keep chronological order (newest first)
+      return dateB.compareTo(dateA);
+    });
+
+    // The transactions within each day maintain their original sort order from _filterTransactions()
 
     return ListView.builder(
       itemCount: keys.length,
@@ -540,28 +573,5 @@ class _TxList extends StatelessWidget {
         );
       },
     );
-  }
-
-  String _dateKey(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final d = DateTime(date.year, date.month, date.day);
-    if (d == today) return 'Today';
-    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 }
