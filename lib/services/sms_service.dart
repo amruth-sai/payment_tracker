@@ -397,27 +397,7 @@ class SmsService extends ChangeNotifier {
 
   /// Feature 4: Load all transactions applying trackFromDate + isIgnored filters
   Future<List<Transaction>> _getFilteredTransactions() async {
-    final trackFromDate = await LocalStorageService.getTrackFromDate();
-    final trackFromTxId = await LocalStorageService.getTrackFromTransactionId();
-
-    List<Transaction> all;
-    if (trackFromDate != null) {
-      all = await LocalStorageService.getTransactionsSince(trackFromDate);
-    } else {
-      all = await LocalStorageService.getAllTransactions();
-    }
-
-    // If trackFromTransactionId is set, trim list to start from that txn
-    if (trackFromTxId != null && trackFromTxId.isNotEmpty) {
-      final idx = all.indexWhere((t) => t.id == trackFromTxId);
-      if (idx != -1) {
-        // all is sorted DESC by date; transactions at idx and after are older
-        all = all.sublist(0, idx + 1);
-      }
-    }
-
-    // Feature 2: exclude ignored transactions from active lists
-    return all.where((t) => !t.isIgnored).toList();
+    return LocalStorageService.getTrackedTransactions();
   }
 
   Future<void> _loadAccounts() async {

@@ -3,10 +3,10 @@
 import 'package:flutter/material.dart';
 import '../models/app_alert.dart';
 import '../models/transaction.dart';
-import '../services/local_storage_service.dart';
 import '../services/anomaly_service.dart';
 import '../services/budget_service.dart';
 import '../services/emi_service.dart';
+import '../services/local_storage_service.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -45,26 +45,40 @@ class _AlertsScreenState extends State<AlertsScreen>
   Future<void> _refreshAlerts() async {
     setState(() => _isRefreshing = true);
 
-    // Load all transactions once
-    final transactions = await LocalStorageService.getAllTransactions();
+    final transactions = await LocalStorageService.getTrackedTransactions();
 
-    // Run all detections
     final anomalies = AnomalyService.detectAnomalies(transactions);
     final duplicates = AnomalyService.detectDuplicates(transactions);
-    final budgetStatuses = await BudgetService.getOverBudgetAlerts();
-    final budgetUsage = await BudgetService.checkBudgets();
-    final usageMap = budgetUsage.map((k, v) => MapEntry(k.name, v.percentage / 100));
-    final digest = AnomalyService.generateDailyDigest(transactions, usageMap);
+    final budgetStatuses =
+        await BudgetService.getOverBudgetAlerts(transactions: transactions);
+    final budgetUsage =
+        await BudgetService.checkBudgets(transactions: transactions);
+    final totalBudget = budgetUsage.fold<double>(
+        0, (sum, status) => sum + status.budget.monthlyLimit);
+    final totalBudgetSpent =
+        budgetUsage.fold<double>(0, (sum, status) => sum + status.spent);
+    final digest = AnomalyService.generateDailyDigest(
+      transactions,
+      totalBudget,
+      totalBudgetSpent,
+    );
     final emiAlerts = _detectEMIAlerts(transactions);
 
-    // Convert BudgetStatus to AppAlert
-    final budgetAlerts = budgetStatuses.map((s) => AppAlert(
-      id: 'budget_${s.budget.category.name}_${DateTime.now().millisecondsSinceEpoch}',
-      type: AlertType.budgetWarning,
-      severity: s.isOverBudget ? AlertSeverity.critical : AlertSeverity.warning,
-      title: '${s.budget.category.emoji} ${s.budget.category.displayName} budget',
-      message: '${s.percentage.toStringAsFixed(0)}% used — \u20b9${s.spent.toStringAsFixed(0)} of \u20b9${s.budget.monthlyLimit.toStringAsFixed(0)}',
-    )).toList();
+    final budgetAlerts = budgetStatuses
+        .map(
+          (status) => AppAlert(
+            id: 'budget_${status.standardCategory.id}_${DateTime.now().millisecondsSinceEpoch}',
+            type: AlertType.budgetWarning,
+            severity: status.isOverBudget
+                ? AlertSeverity.critical
+                : AlertSeverity.warning,
+            title:
+                '${status.standardCategory.emoji} ${status.standardCategory.displayName} budget',
+            message:
+                '${status.percentage.toStringAsFixed(0)}% used - ₹${status.spent.toStringAsFixed(0)} of ₹${status.budget.monthlyLimit.toStringAsFixed(0)}',
+          ),
+        )
+        .toList();
 
     final newAlerts = <AppAlert>[
       ...anomalies,
@@ -84,8 +98,9 @@ class _AlertsScreenState extends State<AlertsScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Found ${newAlerts.length} new alerts'),
-            duration: const Duration(seconds: 2)),
+          content: Text('Found ${newAlerts.length} new alerts'),
+          duration: const Duration(seconds: 2),
+        ),
       );
     }
   }
@@ -93,20 +108,22 @@ class _AlertsScreenState extends State<AlertsScreen>
   List<AppAlert> _detectEMIAlerts(List<Transaction> transactions) {
     final emis = EMIService.detectEMIs(transactions);
     return emis
-        .where((e) => e.isActive && e.totalDetected >= 3)
-        .map((e) => AppAlert(
-              id: 'emi_${e.id}_${DateTime.now().millisecondsSinceEpoch}',
-              type: AlertType.emiDetected,
-              severity: AlertSeverity.info,
-              title: 'Recurring EMI: ${e.merchant}',
-              message:
-                  '₹${e.amount.toStringAsFixed(0)} detected on the ${e.dayOfMonth}th of each month (${e.totalDetected} occurrences)',
-            ))
+        .where((emi) => emi.isActive && emi.totalDetected >= 3)
+        .map(
+          (emi) => AppAlert(
+            id: 'emi_${emi.id}_${DateTime.now().millisecondsSinceEpoch}',
+            type: AlertType.emiDetected,
+            severity: AlertSeverity.info,
+            title: 'Recurring EMI: ${emi.merchant}',
+            message:
+                '₹${emi.amount.toStringAsFixed(0)} detected on the ${emi.dayOfMonth}th of each month (${emi.totalDetected} occurrences)',
+          ),
+        )
         .toList();
   }
 
   List<AppAlert> _filtered(AlertType type) =>
-      _allAlerts.where((a) => a.type == type).toList();
+      _allAlerts.where((alert) => alert.type == type).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -118,9 +135,10 @@ class _AlertsScreenState extends State<AlertsScreen>
             const Padding(
               padding: EdgeInsets.all(12),
               child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2)),
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             )
           else
             IconButton(
@@ -129,20 +147,24 @@ class _AlertsScreenState extends State<AlertsScreen>
               onPressed: _refreshAlerts,
             ),
           PopupMenuButton<String>(
-            onSelected: (v) async {
-              if (v == 'read_all') {
+            onSelected: (value) async {
+              if (value == 'read_all') {
                 await LocalStorageService.markAllAlertsRead();
                 _loadAlerts();
-              } else if (v == 'clean') {
+              } else if (value == 'clean') {
                 await LocalStorageService.cleanOldAlerts();
                 _loadAlerts();
               }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(
-                  value: 'read_all', child: Text('Mark all as read')),
+                value: 'read_all',
+                child: Text('Mark all as read'),
+              ),
               const PopupMenuItem(
-                  value: 'clean', child: Text('Clear old alerts')),
+                value: 'clean',
+                child: Text('Clear old alerts'),
+              ),
             ],
           ),
         ],
@@ -191,8 +213,10 @@ class _AlertsScreenState extends State<AlertsScreen>
                 color: Colors.red,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('$unread',
-                  style: const TextStyle(color: Colors.white, fontSize: 10)),
+              child: Text(
+                '$unread',
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+              ),
             ),
           ],
         ],
@@ -209,8 +233,10 @@ class _AlertsScreenState extends State<AlertsScreen>
             Icon(Icons.check_circle_outline,
                 size: 48, color: Colors.green[300]),
             const SizedBox(height: 12),
-            const Text('All clear!',
-                style: TextStyle(fontSize: 16, color: Colors.grey)),
+            const Text(
+              'All clear!',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
               onPressed: _refreshAlerts,
@@ -225,7 +251,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: alerts.length,
-      itemBuilder: (_, i) => _buildAlertCard(alerts[i]),
+      itemBuilder: (_, index) => _buildAlertCard(alerts[index]),
     );
   }
 
@@ -277,8 +303,9 @@ class _AlertsScreenState extends State<AlertsScreen>
                           child: Text(
                             alert.title,
                             style: TextStyle(
-                              fontWeight:
-                                  alert.isRead ? FontWeight.normal : FontWeight.bold,
+                              fontWeight: alert.isRead
+                                  ? FontWeight.normal
+                                  : FontWeight.bold,
                               fontSize: 14,
                             ),
                           ),
@@ -295,14 +322,14 @@ class _AlertsScreenState extends State<AlertsScreen>
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(alert.message,
-                        style: const TextStyle(
-                            fontSize: 13, color: Colors.grey)),
+                    Text(
+                      alert.message,
+                      style: const TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       _timeAgo(alert.createdAt),
-                      style:
-                          const TextStyle(fontSize: 11, color: Colors.grey),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -314,12 +341,12 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
+  String _timeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
     if (diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${dt.day}/${dt.month}/${dt.year}';
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
   }
 }

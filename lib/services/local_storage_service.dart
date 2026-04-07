@@ -1018,6 +1018,43 @@ class LocalStorageService {
     return rows.map(_rowToTransaction).toList();
   }
 
+  /// Get active transactions after applying tracking settings and ignored filters.
+  static Future<List<Transaction>> getTrackedTransactions({
+    DateTime? start,
+    DateTime? end,
+  }) async {
+    final trackFromDate = await getTrackFromDate();
+    final trackFromTxId = await getTrackFromTransactionId();
+
+    DateTime? effectiveStart = start;
+    if (trackFromDate != null &&
+        (effectiveStart == null || trackFromDate.isAfter(effectiveStart))) {
+      effectiveStart = trackFromDate;
+    }
+
+    List<Transaction> transactions = effectiveStart != null
+        ? await getTransactionsSince(effectiveStart)
+        : await getAllTransactions();
+
+    if (end != null) {
+      transactions = transactions.where((t) => !t.date.isAfter(end)).toList();
+    }
+
+    if (start != null) {
+      transactions =
+          transactions.where((t) => !t.date.isBefore(start)).toList();
+    }
+
+    if (trackFromTxId != null && trackFromTxId.isNotEmpty) {
+      final idx = transactions.indexWhere((t) => t.id == trackFromTxId);
+      if (idx != -1) {
+        transactions = transactions.sublist(0, idx + 1);
+      }
+    }
+
+    return transactions.where((t) => !t.isIgnored).toList();
+  }
+
   /// Convert database row to Transaction object
   static Transaction _rowToTransaction(Map<String, dynamic> row) {
     return Transaction(

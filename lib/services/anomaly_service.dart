@@ -41,13 +41,10 @@ class AnomalyService {
       final recentTotal = recentTxs.fold(0.0, (sum, t) => sum + t.amount);
       final historicalWeeks = max(
           1.0,
-          historicalTxs.last.date
-                  .difference(historicalTxs.first.date)
-                  .inDays /
+          historicalTxs.last.date.difference(historicalTxs.first.date).inDays /
               7.0);
       final historicalWeeklyAvg =
-          historicalTxs.fold(0.0, (sum, t) => sum + t.amount) /
-              historicalWeeks;
+          historicalTxs.fold(0.0, (sum, t) => sum + t.amount) / historicalWeeks;
 
       if (historicalWeeklyAvg <= 0) continue;
 
@@ -80,8 +77,7 @@ class AnomalyService {
           id: 'new_merchant_${tx.id}',
           type: AlertType.anomaly,
           title: 'New Merchant Charge',
-          message:
-              'First-time charge of ₹${tx.amount.toStringAsFixed(0)} from '
+          message: 'First-time charge of ₹${tx.amount.toStringAsFixed(0)} from '
               '${_capitalize(key)}.',
           severity: AlertSeverity.info,
           transactionId: tx.id,
@@ -105,8 +101,7 @@ class AnomalyService {
         if (diff.inMinutes > 5) break;
 
         if (sorted[i].amount == sorted[j].amount &&
-            sorted[i].sender.toLowerCase() ==
-                sorted[j].sender.toLowerCase() &&
+            sorted[i].sender.toLowerCase() == sorted[j].sender.toLowerCase() &&
             sorted[i].type == sorted[j].type) {
           final pairKey = '${sorted[i].id}_${sorted[j].id}';
           if (seen.contains(pairKey)) continue;
@@ -132,11 +127,12 @@ class AnomalyService {
   /// Generate daily digest summary.
   static AppAlert? generateDailyDigest(
     List<Transaction> transactions,
-    Map<String, double>? budgetUsage,
+    double? monthlyBudgetTotal,
+    double? monthlyBudgetSpent,
   ) {
     final now = DateTime.now();
-    final yesterday =
-        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    final yesterday = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
     final yesterdayEnd = DateTime(now.year, now.month, now.day);
 
     final yesterdayTxs = transactions
@@ -150,30 +146,19 @@ class AnomalyService {
 
     if (totalSpent <= 0) return null;
 
-    // Calculate weekly spending
-    final weekStart =
-        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 7));
-    final weekTxs = transactions
-        .where((t) => t.date.isAfter(weekStart) && t.isDebit)
-        .toList();
-    final weekSpent = weekTxs.fold(0.0, (sum, t) => sum + t.amount);
-
     String budgetInfo = '';
-    if (budgetUsage != null && budgetUsage.isNotEmpty) {
-      final totalBudget = budgetUsage.values
-          .fold(0.0, (sum, limit) => sum + limit);
-      if (totalBudget > 0) {
-        final usedPct = (weekSpent / totalBudget * 100).clamp(0, 999);
-        budgetInfo = ' Your weekly budget is ${usedPct.toStringAsFixed(0)}% used.';
-      }
+    if (monthlyBudgetTotal != null && monthlyBudgetTotal > 0) {
+      final usedPct =
+          ((monthlyBudgetSpent ?? 0) / monthlyBudgetTotal * 100).clamp(0, 999);
+      budgetInfo =
+          ' This month you have used ${usedPct.toStringAsFixed(0)}% of your total budget.';
     }
 
     return AppAlert(
       id: 'digest_${yesterday.millisecondsSinceEpoch}',
       type: AlertType.dailyDigest,
       title: 'Daily Digest',
-      message:
-          'Yesterday you spent ₹${totalSpent.toStringAsFixed(0)} across '
+      message: 'Yesterday you spent ₹${totalSpent.toStringAsFixed(0)} across '
           '${yesterdayTxs.where((t) => t.isDebit).length} transactions.$budgetInfo',
       severity: AlertSeverity.info,
     );
@@ -183,8 +168,7 @@ class AnomalyService {
     if (s.isEmpty) return s;
     return s
         .split(' ')
-        .map((w) =>
-            w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
         .join(' ');
   }
 }
