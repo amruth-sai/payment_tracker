@@ -26,31 +26,31 @@ enum TransactionCategory {
       case foodDining:
         return 'Food & Dining';
       case travelTransport:
-        return 'Travel & Transport';
+        return 'Travel & Fuel';
       case shopping:
         return 'Shopping';
       case rentHousing:
         return 'Rent & Housing';
       case emiLoans:
-        return 'EMI & Loans';
+        return 'EMIs & Loans';
       case entertainment:
         return 'Entertainment';
       case billsUtilities:
         return 'Bills & Utilities';
       case healthMedical:
-        return 'Health & Medical';
+        return 'Health';
       case education:
         return 'Education';
       case salaryIncome:
-        return 'Salary & Income';
+        return 'Salary';
       case transfer:
         return 'Transfer';
       case cashback:
         return 'Cashback';
       case investment:
-        return 'Investment';
+        return 'Long-Term Investments';
       case other:
-        return 'Other';
+        return 'Misc / Other';
       case uncategorized:
         return 'Uncategorized';
     }
@@ -90,6 +90,53 @@ enum TransactionCategory {
         return '❓';
     }
   }
+
+  String get standardCategoryId {
+    switch (this) {
+      case foodDining:
+        return 'food_dining';
+      case travelTransport:
+        return 'travel_fuel';
+      case shopping:
+        return 'shopping';
+      case rentHousing:
+        return 'rent_housing';
+      case emiLoans:
+        return 'emi_loans';
+      case entertainment:
+        return 'entertainment';
+      case billsUtilities:
+        return 'bills_utilities';
+      case healthMedical:
+        return 'health';
+      case education:
+        return 'education';
+      case salaryIncome:
+        return 'salary';
+      case transfer:
+        return 'transfer';
+      case cashback:
+        return 'cashback';
+      case investment:
+        return 'long_term_investments';
+      case other:
+        return 'other';
+      case uncategorized:
+        return 'uncategorized';
+    }
+  }
+
+  static TransactionCategory? fromStandardCategoryId(String? id) {
+    if (id == null || id.isEmpty) return null;
+
+    for (final category in TransactionCategory.values) {
+      if (category.standardCategoryId == id) {
+        return category;
+      }
+    }
+
+    return null;
+  }
 }
 
 class Transaction {
@@ -107,18 +154,22 @@ class Transaction {
   final String? accountId; // Link to Account
   final bool isUserCorrected; // User manually corrected this transaction
   final bool isSalary; // Marked as salary by user
-  final TransactionCategory? category; // Auto or manually tagged category (deprecated - for backward compatibility)
+  final TransactionCategory?
+      category; // Auto or manually tagged category (deprecated - for backward compatibility)
   final String? standardCategoryId; // New: References standard_categories table
   final String? note; // User-added personal note
-  final String? tag; // Feature 1: User-defined label (e.g. "reimbursable", "split")
+  final String?
+      tag; // Feature 1: User-defined label (e.g. "reimbursable", "split")
   final bool isIgnored; // Feature 2: If true, excluded from all summaries
-  final String? customCategoryId; // Feature 3: Links to a user-created custom category
+  final String?
+      customCategoryId; // Feature 3: Links to a user-created custom category
 
   // Transfer linking fields
   final String? transferGroupId; // Groups related transfer transactions
   final String? transferPartnerId; // Direct link to partner transaction ID
   final bool isTransferSource; // True if this is the debit side of a transfer
-  final bool isTransferDestination; // True if this is the credit side of a transfer
+  final bool
+      isTransferDestination; // True if this is the credit side of a transfer
 
   Transaction({
     required this.id,
@@ -180,10 +231,20 @@ class Transaction {
   bool get isCompleteTransfer => isPartOfTransfer && hasTransferPartner;
 
   /// Get the effective category (prioritizes standardCategoryId over deprecated category enum)
-  String? get effectiveCategoryId => standardCategoryId ?? category?.name;
+  String? get effectiveCategoryId => effectiveStandardCategoryId;
+
+  /// Get the effective standard category ID, falling back to the legacy enum.
+  String? get effectiveStandardCategoryId =>
+      standardCategoryId ?? category?.standardCategoryId;
+
+  /// Get the closest legacy enum representation when possible.
+  TransactionCategory? get effectiveLegacyCategory =>
+      category ??
+      TransactionCategory.fromStandardCategoryId(standardCategoryId);
 
   /// Check if transaction has any category assigned
-  bool get hasCategory => standardCategoryId != null || category != null;
+  bool get hasCategory =>
+      effectiveStandardCategoryId != null || customCategoryId != null;
 
   Transaction copyWith({
     String? id,
@@ -212,6 +273,7 @@ class Transaction {
     bool? isTransferSource,
     bool? isTransferDestination,
     // Sentinels to explicitly clear nullable fields
+    bool clearCategory = false,
     bool clearNote = false,
     bool clearTag = false,
     bool clearCustomCategory = false,
@@ -235,16 +297,24 @@ class Transaction {
       accountId: clearAccountId ? null : (accountId ?? this.accountId),
       isUserCorrected: isUserCorrected ?? this.isUserCorrected,
       isSalary: isSalary ?? this.isSalary,
-      category: category ?? this.category,
-      standardCategoryId: clearStandardCategory ? null : (standardCategoryId ?? this.standardCategoryId),
+      category: clearCategory ? null : (category ?? this.category),
+      standardCategoryId: clearStandardCategory
+          ? null
+          : (standardCategoryId ?? this.standardCategoryId),
       note: clearNote ? null : (note ?? this.note),
       tag: clearTag ? null : (tag ?? this.tag),
       isIgnored: isIgnored ?? this.isIgnored,
-      customCategoryId: clearCustomCategory ? null : (customCategoryId ?? this.customCategoryId),
-      transferGroupId: clearTransferGroup ? null : (transferGroupId ?? this.transferGroupId),
-      transferPartnerId: clearTransferPartner ? null : (transferPartnerId ?? this.transferPartnerId),
+      customCategoryId: clearCustomCategory
+          ? null
+          : (customCategoryId ?? this.customCategoryId),
+      transferGroupId:
+          clearTransferGroup ? null : (transferGroupId ?? this.transferGroupId),
+      transferPartnerId: clearTransferPartner
+          ? null
+          : (transferPartnerId ?? this.transferPartnerId),
       isTransferSource: isTransferSource ?? this.isTransferSource,
-      isTransferDestination: isTransferDestination ?? this.isTransferDestination,
+      isTransferDestination:
+          isTransferDestination ?? this.isTransferDestination,
     );
   }
 }

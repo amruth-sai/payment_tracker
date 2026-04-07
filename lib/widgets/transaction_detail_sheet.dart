@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/transaction.dart';
 import '../models/custom_category.dart';
+import '../models/standard_category.dart';
 import '../models/account.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
@@ -40,6 +41,8 @@ class TransactionDetailSheet extends StatefulWidget {
 
 class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   late Transaction _tx;
+  List<StandardCategory> _standardCategories = [];
+  StandardCategory? _selectedStandardCategory;
   List<CustomCategory> _customCategories = [];
   CustomCategory? _selectedCustomCategory;
   List<Account> _accounts = [];
@@ -48,8 +51,32 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   void initState() {
     super.initState();
     _tx = widget.tx;
+    _loadStandardCategories();
     _loadCustomCategories();
     _loadAccounts();
+  }
+
+  Future<void> _loadStandardCategories() async {
+    final cats = await LocalStorageService.getAllStandardCategories();
+    final mergedCategories = <String, StandardCategory>{
+      for (final category in StandardCategory.defaultCategories)
+        category.id: category,
+      for (final category in cats) category.id: category,
+    };
+
+    StandardCategory? current;
+    final currentStandardCategoryId = _tx.effectiveStandardCategoryId;
+    if (currentStandardCategoryId != null) {
+      current = mergedCategories[currentStandardCategoryId];
+    }
+
+    if (mounted) {
+      setState(() {
+        _standardCategories = mergedCategories.values.toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        _selectedStandardCategory = current;
+      });
+    }
   }
 
   Future<void> _loadCustomCategories() async {
@@ -200,9 +227,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: _tx.isIgnored
-                                    ? Colors.orange
-                                    : null,
+                                color: _tx.isIgnored ? Colors.orange : null,
                               ),
                             ),
                             Text(
@@ -232,12 +257,31 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           ),
           const SizedBox(height: 16),
 
-          // Category badge - clickable to change (Feature 3)
+          // Category badges - transactions can keep one standard + one custom.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                // Built-in or custom category
+                if (_selectedStandardCategory != null)
+                  _CategoryBadge(
+                    emoji: _selectedStandardCategory!.emoji,
+                    label: _selectedStandardCategory!.displayName,
+                    color: _selectedStandardCategory!.color,
+                    onTap: _showCategoryPicker,
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _showCategoryPicker,
+                    icon: const Icon(Icons.category_outlined, size: 16),
+                    label: const Text('Add Standard Category'),
+                    style: OutlinedButton.styleFrom(
+                      textStyle: const TextStyle(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                    ),
+                  ),
                 if (_selectedCustomCategory != null)
                   _CategoryBadge(
                     emoji: _selectedCustomCategory!.emoji,
@@ -245,18 +289,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                     color: _selectedCustomCategory!.color,
                     onTap: _showCategoryPicker,
                   )
-                else if (_tx.category != null)
-                  _CategoryBadge(
-                    emoji: _tx.category!.emoji,
-                    label: _tx.category!.displayName,
-                    color: Theme.of(context).colorScheme.primary,
-                    onTap: _showCategoryPicker,
-                  )
                 else
                   OutlinedButton.icon(
                     onPressed: _showCategoryPicker,
                     icon: const Icon(Icons.label_outline, size: 16),
-                    label: const Text('Assign Category'),
+                    label: const Text('Add My Category'),
                     style: OutlinedButton.styleFrom(
                       textStyle: const TextStyle(fontSize: 12),
                       padding: const EdgeInsets.symmetric(
@@ -306,16 +343,12 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                             : 'Add a tag (e.g. reimbursable, split...)',
                         style: TextStyle(
                           fontSize: 13,
-                          fontStyle:
-                              _tx.tag == null || _tx.tag!.isEmpty
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
-                          color:
-                              _tx.tag != null && _tx.tag!.isNotEmpty
-                                  ? Theme.of(context).colorScheme.onSurface
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                          fontStyle: _tx.tag == null || _tx.tag!.isEmpty
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                          color: _tx.tag != null && _tx.tag!.isNotEmpty
+                              ? Theme.of(context).colorScheme.onSurface
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -360,10 +393,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                             : 'Add a personal note...',
                         style: TextStyle(
                           fontSize: 13,
-                          fontStyle:
-                              _tx.note == null || _tx.note!.isEmpty
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
+                          fontStyle: _tx.note == null || _tx.note!.isEmpty
+                              ? FontStyle.italic
+                              : FontStyle.normal,
                           color: _tx.note != null && _tx.note!.isNotEmpty
                               ? theme.colorScheme.onSurface
                               : theme.colorScheme.onSurfaceVariant,
@@ -454,8 +486,8 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                             ),
                             if (_accounts.isNotEmpty) ...[
                               const SizedBox(width: 4),
-                              Icon(Icons.edit, size: 14,
-                                  color: Colors.grey[400]),
+                              Icon(Icons.edit,
+                                  size: 14, color: Colors.grey[400]),
                             ],
                           ],
                         ),
@@ -864,8 +896,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                                 : account.type == AccountType.upi
                                     ? Icons.phone_android
                                     : Icons.account_balance,
-                        color:
-                            isSelected ? theme.colorScheme.primary : null,
+                        color: isSelected ? theme.colorScheme.primary : null,
                       ),
                       title: Text(account.displayName),
                       subtitle: Text(account.typeLabel),
@@ -889,8 +920,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   }
 
   Future<void> _updateAccountId(String? newAccountId) async {
-    await LocalStorageService.updateTransactionAccountId(
-        _tx.id, newAccountId);
+    await LocalStorageService.updateTransactionAccountId(_tx.id, newAccountId);
     final updated = newAccountId != null
         ? _tx.copyWith(accountId: newAccountId)
         : _tx.copyWith(clearAccountId: true);
@@ -908,24 +938,32 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (ctx) => _CategoryPickerSheet(
-        currentBuiltIn: _tx.category,
+        currentStandardId: _tx.effectiveStandardCategoryId,
         currentCustomId: _tx.customCategoryId,
+        standardCategories: _standardCategories,
         customCategories: _customCategories,
-        onBuiltInSelected: (cat) async {
-          // Keep custom category, just update standard category
-          await LocalStorageService.updateTransactionCategory(_tx.id, cat);
-          final updated = _tx.copyWith(category: cat);
+        onStandardSelected: (category) async {
+          final legacyCategory =
+              TransactionCategory.fromStandardCategoryId(category.id);
+          await LocalStorageService.updateTransactionStandardCategory(
+            _tx.id,
+            category.id,
+          );
+          final updated = _tx.copyWith(
+            category: legacyCategory,
+            standardCategoryId: category.id,
+            clearCategory: legacyCategory == null,
+          );
           setState(() {
             _tx = updated;
+            _selectedStandardCategory = category;
           });
           widget.onTransactionUpdated?.call(updated);
-          // Refresh in-memory list so all screens reflect the change instantly
           if (mounted) {
             context.read<SmsService>().reloadFromCache();
           }
         },
         onCustomSelected: (custom) async {
-          // Keep standard category, just update custom category
           await LocalStorageService.updateTransactionCustomCategory(
               _tx.id, custom.id);
           final updated = _tx.copyWith(customCategoryId: custom.id);
@@ -939,20 +977,33 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             context.read<SmsService>().reloadFromCache();
           }
         },
-        onClearCategory: () async {
-          // Clear both standard and custom categories
-          await LocalStorageService.updateTransactionCategory(_tx.id, TransactionCategory.uncategorized);
-          await LocalStorageService.updateTransactionCustomCategory(_tx.id, null);
-          final updated = _tx.copyWith(
-            category: TransactionCategory.uncategorized,
-            clearCustomCategory: true,
+        onClearStandardCategory: () async {
+          await LocalStorageService.updateTransactionStandardCategory(
+            _tx.id,
+            null,
           );
+          final updated = _tx.copyWith(
+            clearStandardCategory: true,
+            clearCategory: true,
+          );
+          setState(() {
+            _tx = updated;
+            _selectedStandardCategory = null;
+          });
+          widget.onTransactionUpdated?.call(updated);
+          if (mounted) {
+            context.read<SmsService>().reloadFromCache();
+          }
+        },
+        onClearCustomCategory: () async {
+          await LocalStorageService.updateTransactionCustomCategory(
+              _tx.id, null);
+          final updated = _tx.copyWith(clearCustomCategory: true);
           setState(() {
             _tx = updated;
             _selectedCustomCategory = null;
           });
           widget.onTransactionUpdated?.call(updated);
-          // Refresh in-memory list so all screens reflect the change instantly
           if (mounted) {
             context.read<SmsService>().reloadFromCache();
           }
@@ -1005,12 +1056,14 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
 
     // Transfer group ID
     if (_tx.transferGroupId != null) {
-      widgets.add(_DetailRow('Transfer Group', _tx.transferGroupId!.substring(0, 8), theme));
+      widgets.add(_DetailRow(
+          'Transfer Group', _tx.transferGroupId!.substring(0, 8), theme));
     }
 
     // Partner transaction info
     if (_tx.transferPartnerId != null) {
-      widgets.add(_DetailRow('Partner Transaction', _tx.transferPartnerId!.substring(0, 8), theme));
+      widgets.add(_DetailRow('Partner Transaction',
+          _tx.transferPartnerId!.substring(0, 8), theme));
 
       // Add button to view partner transaction
       widgets.add(const SizedBox(height: 8));
@@ -1018,7 +1071,8 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
         OutlinedButton.icon(
           onPressed: _viewPartnerTransaction,
           icon: const Icon(Icons.open_in_new_rounded, size: 16),
-          label: Text(_tx.isTransferSource ? 'View Destination' : 'View Source'),
+          label:
+              Text(_tx.isTransferSource ? 'View Destination' : 'View Source'),
           style: OutlinedButton.styleFrom(
             textStyle: const TextStyle(fontSize: 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1200,25 +1254,32 @@ class _CategoryBadge extends StatelessWidget {
 
 // Feature 3: Sheet showing built-in + custom categories to pick from
 class _CategoryPickerSheet extends StatelessWidget {
-  final TransactionCategory? currentBuiltIn;
+  final String? currentStandardId;
   final String? currentCustomId;
+  final List<StandardCategory> standardCategories;
   final List<CustomCategory> customCategories;
-  final void Function(TransactionCategory) onBuiltInSelected;
+  final void Function(StandardCategory) onStandardSelected;
   final void Function(CustomCategory) onCustomSelected;
-  final VoidCallback onClearCategory;
+  final VoidCallback onClearStandardCategory;
+  final VoidCallback onClearCustomCategory;
 
   const _CategoryPickerSheet({
-    required this.currentBuiltIn,
+    required this.currentStandardId,
     required this.currentCustomId,
+    required this.standardCategories,
     required this.customCategories,
-    required this.onBuiltInSelected,
+    required this.onStandardSelected,
     required this.onCustomSelected,
-    required this.onClearCategory,
+    required this.onClearStandardCategory,
+    required this.onClearCustomCategory,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final availableStandardCategories = standardCategories.isEmpty
+        ? StandardCategory.defaultCategories
+        : standardCategories;
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.4,
@@ -1245,20 +1306,36 @@ class _CategoryPickerSheet extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Choose Category',
+                    Text('Manage Categories',
                         style: theme.textTheme.titleLarge
                             ?.copyWith(fontWeight: FontWeight.bold)),
-                    if (currentBuiltIn != null || currentCustomId != null)
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          onClearCategory();
-                        },
-                        child: const Text('Clear',
-                            style: TextStyle(color: Colors.red)),
-                      ),
                   ],
                 ),
+                if (currentStandardId != null || currentCustomId != null)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (currentStandardId != null)
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            onClearStandardCategory();
+                          },
+                          child: const Text('Clear Standard',
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                      if (currentCustomId != null)
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            onClearCustomCategory();
+                          },
+                          child: const Text('Clear My Category',
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -1273,8 +1350,8 @@ class _CategoryPickerSheet extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
                     child: Text('My Categories',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                            color: theme.colorScheme.primary)),
+                        style: theme.textTheme.labelLarge
+                            ?.copyWith(color: theme.colorScheme.primary)),
                   ),
                   Wrap(
                     spacing: 8,
@@ -1323,62 +1400,96 @@ class _CategoryPickerSheet extends StatelessWidget {
                   const SizedBox(height: 8),
                 ],
 
-                // Built-in categories
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                  child: Text('Standard Categories',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant)),
-                ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: TransactionCategory.values.map((cat) {
-                    final isSelected =
-                        currentCustomId == null && cat == currentBuiltIn;
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onBuiltInSelected(cat);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? theme.colorScheme.primaryContainer
-                              : theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.outline
-                                    .withValues(alpha: 0.3),
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                ...StandardCategory.defaultGroups.map((group) {
+                  final categoriesById = {
+                    for (final category in availableStandardCategories)
+                      category.id: category,
+                  };
+                  final groupedCategories = group.categoryIds
+                      .map((id) => categoriesById[id])
+                      .whereType<StandardCategory>()
+                      .toList();
+                  if (groupedCategories.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(cat.emoji,
-                                style: const TextStyle(fontSize: 16)),
-                            const SizedBox(width: 6),
-                            Text(cat.displayName,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w700
-                                      : FontWeight.normal,
-                                  color: isSelected
-                                      ? theme.colorScheme.onPrimaryContainer
-                                      : null,
-                                )),
+                            Text(
+                              group.title,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            Text(
+                              group.subtitle,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.outline,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: groupedCategories.map((cat) {
+                          final isSelected = cat.id == currentStandardId;
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              onStandardSelected(cat);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? theme.colorScheme.primaryContainer
+                                    : theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outline
+                                          .withValues(alpha: 0.3),
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(cat.emoji,
+                                      style: const TextStyle(fontSize: 16)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    cat.displayName,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.normal,
+                                      color: isSelected
+                                          ? theme.colorScheme.onPrimaryContainer
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  );
+                }),
                 const SizedBox(height: 16),
               ],
             ),

@@ -62,16 +62,14 @@ class SmsService extends ChangeNotifier {
       final start = _currentCycle!.startDate;
       final end = _currentCycle!.endDate ?? DateTime.now();
       return _transactions
-          .where((t) =>
-              !t.date.isBefore(start) && !t.date.isAfter(end))
+          .where((t) => !t.date.isBefore(start) && !t.date.isAfter(end))
           .toList();
     }
     // Use salary cycle day if set, otherwise fall back to calendar month
     if (_salaryCycleDay != null) {
       final range = _getCycleDateRange(_salaryCycleDay!);
       return _transactions
-          .where((t) =>
-              !t.date.isBefore(range.$1) && !t.date.isAfter(range.$2))
+          .where((t) => !t.date.isBefore(range.$1) && !t.date.isAfter(range.$2))
           .toList();
     }
     return currentMonthTransactions;
@@ -99,12 +97,38 @@ class SmsService extends ChangeNotifier {
     if (_currentCycle != null) {
       final start = _currentCycle!.startDate;
       final end = _currentCycle!.endDate ?? DateTime.now();
-      final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
       return '${start.day} ${months[start.month - 1]} – ${end.day} ${months[end.month - 1]} ${end.year}';
     }
     if (_salaryCycleDay != null) {
       final range = _getCycleDateRange(_salaryCycleDay!);
-      final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
       return '${range.$1.day} ${months[range.$1.month - 1]} – ${range.$2.day} ${months[range.$2.month - 1]} ${range.$2.year}';
     }
     return _monthYearNow();
@@ -112,7 +136,20 @@ class SmsService extends ChangeNotifier {
 
   static String _monthYearNow() {
     final now = DateTime.now();
-    final months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
     return '${months[now.month - 1]} ${now.year}';
   }
 
@@ -120,8 +157,7 @@ class SmsService extends ChangeNotifier {
   List<Transaction> get currentMonthTransactions {
     final now = DateTime.now();
     return _transactions
-        .where((t) =>
-            t.date.year == now.year && t.date.month == now.month)
+        .where((t) => t.date.year == now.year && t.date.month == now.month)
         .toList();
   }
 
@@ -285,10 +321,14 @@ class SmsService extends ChangeNotifier {
         if (tx != null) {
           // Auto-categorize the transaction
           final category = CategoryService.categorize(tx);
-          final categorizedTx = tx.copyWith(category: category);
+          final categorizedTx = tx.copyWith(
+            category: category,
+            standardCategoryId: category.standardCategoryId,
+          );
           newTransactions.add(categorizedTx);
           // Save transaction to cache
-          await LocalStorageService.saveTransaction(categorizedTx, parsedBy: parsedBy);
+          await LocalStorageService.saveTransaction(categorizedTx,
+              parsedBy: parsedBy);
           await LocalStorageService.markSmsAsProcessed(id, isTransaction: true);
         } else {
           // Mark as processed but not a transaction
@@ -404,14 +444,18 @@ class SmsService extends ChangeNotifier {
     } else {
       // Cycle started last month
       final prevMonth = DateTime(now.year, now.month - 1, 1);
-      final daysInPrevMonth = DateTime(prevMonth.year, prevMonth.month + 1, 0).day;
-      final clampedDay = salaryDay > daysInPrevMonth ? daysInPrevMonth : salaryDay;
+      final daysInPrevMonth =
+          DateTime(prevMonth.year, prevMonth.month + 1, 0).day;
+      final clampedDay =
+          salaryDay > daysInPrevMonth ? daysInPrevMonth : salaryDay;
       cycleStart = DateTime(prevMonth.year, prevMonth.month, clampedDay);
     }
     // Cycle ends the day before the next salary day
     final nextMonth = DateTime(cycleStart.year, cycleStart.month + 1, 1);
-    final daysInNextMonth = DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
-    final clampedNextDay = salaryDay > daysInNextMonth ? daysInNextMonth : salaryDay;
+    final daysInNextMonth =
+        DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
+    final clampedNextDay =
+        salaryDay > daysInNextMonth ? daysInNextMonth : salaryDay;
     final cycleEnd = DateTime(nextMonth.year, nextMonth.month, clampedNextDay)
         .subtract(const Duration(days: 1));
     // Return start to min(cycleEnd, now) — don't go into the future
@@ -427,9 +471,9 @@ class SmsService extends ChangeNotifier {
     // Fallback: match account by last 4 digits
     if (accountLast4 != null) {
       final match = _accounts.cast<Account?>().firstWhere(
-        (a) => a!.last4Digits == accountLast4,
-        orElse: () => null,
-      );
+            (a) => a!.last4Digits == accountLast4,
+            orElse: () => null,
+          );
       if (match != null) return match.displayName;
       return '••$accountLast4';
     }

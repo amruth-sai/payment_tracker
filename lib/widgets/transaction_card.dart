@@ -7,6 +7,10 @@ import '../models/transaction.dart';
 class TransactionCard extends StatelessWidget {
   final Transaction tx;
   final String? accountDisplayName;
+  final String? standardCategoryLabel;
+  final Color? standardCategoryColor;
+  final String? customCategoryLabel;
+  final Color? customCategoryColor;
   final VoidCallback? onTap;
   final Function(Transaction)? onSwipeIgnore;
   final Function(Transaction)? onSwipeToggleType;
@@ -15,6 +19,10 @@ class TransactionCard extends StatelessWidget {
     super.key,
     required this.tx,
     this.accountDisplayName,
+    this.standardCategoryLabel,
+    this.standardCategoryColor,
+    this.customCategoryLabel,
+    this.customCategoryColor,
     this.onTap,
     this.onSwipeIgnore,
     this.onSwipeToggleType,
@@ -28,6 +36,7 @@ class TransactionCard extends StatelessWidget {
     final bgColor = isCredit
         ? const Color(0xFF1DB954).withValues(alpha: 0.08)
         : const Color(0xFFE53935).withValues(alpha: 0.08);
+    final effectiveStandardCategory = tx.effectiveLegacyCategory;
 
     final cardContent = Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
@@ -83,11 +92,24 @@ class TransactionCard extends StatelessWidget {
                           _Chip(
                               label: accountDisplayName!,
                               color: theme.colorScheme.tertiary),
-                        if (tx.category != null &&
-                            tx.category != TransactionCategory.uncategorized)
+                        if (standardCategoryLabel != null)
                           _Chip(
-                              label: tx.category!.displayName,
+                            label: standardCategoryLabel!,
+                            color: standardCategoryColor ??
+                                theme.colorScheme.secondary,
+                          )
+                        else if (effectiveStandardCategory != null &&
+                            effectiveStandardCategory !=
+                                TransactionCategory.uncategorized)
+                          _Chip(
+                              label: effectiveStandardCategory.displayName,
                               color: theme.colorScheme.secondary),
+                        if (customCategoryLabel != null)
+                          _Chip(
+                            label: customCategoryLabel!,
+                            color: customCategoryColor ??
+                                theme.colorScheme.primary,
+                          ),
                       ],
                     ),
                     const SizedBox(height: 3),

@@ -8,10 +8,12 @@ class StandardCategoryManagementScreen extends StatefulWidget {
   const StandardCategoryManagementScreen({super.key});
 
   @override
-  State<StandardCategoryManagementScreen> createState() => _StandardCategoryManagementScreenState();
+  State<StandardCategoryManagementScreen> createState() =>
+      _StandardCategoryManagementScreenState();
 }
 
-class _StandardCategoryManagementScreenState extends State<StandardCategoryManagementScreen> {
+class _StandardCategoryManagementScreenState
+    extends State<StandardCategoryManagementScreen> {
   List<StandardCategory> _categories = [];
   bool _isLoading = true;
 
@@ -63,7 +65,8 @@ class _StandardCategoryManagementScreenState extends State<StandardCategoryManag
     if (category.isDefault) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cannot delete default categories. Disable them instead.'),
+          content:
+              Text('Cannot delete default categories. Disable them instead.'),
         ),
       );
       return;
@@ -124,8 +127,8 @@ class _StandardCategoryManagementScreenState extends State<StandardCategoryManag
             SnackBar(
               content: Text(
                 category == null
-                  ? '${result.displayName} created'
-                  : '${result.displayName} updated',
+                    ? '${result.displayName} created'
+                    : '${result.displayName} updated',
               ),
             ),
           );
@@ -159,88 +162,151 @@ class _StandardCategoryManagementScreenState extends State<StandardCategoryManag
               ? const Center(
                   child: Text('No categories found'),
                 )
-              : ListView.builder(
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) {
-                    final category = _categories[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16.0,
-                        vertical: 4.0,
+              : _buildGroupedCategoryList(),
+    );
+  }
+
+  Widget _buildGroupedCategoryList() {
+    final defaults =
+        _categories.where((category) => category.isDefault).toList();
+    final custom =
+        _categories.where((category) => !category.isDefault).toList();
+    final defaultsById = {
+      for (final category in defaults) category.id: category
+    };
+
+    return ListView(
+      children: [
+        ...StandardCategory.defaultGroups.map((group) {
+          final groupedCategories = group.categoryIds
+              .map((id) => defaultsById[id])
+              .whereType<StandardCategory>()
+              .toList();
+          if (groupedCategories.isEmpty) {
+            return const SizedBox.shrink();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
                       ),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: category.color.withValues(alpha: 0.2),
-                          child: Text(
-                            category.emoji,
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                        ),
-                        title: Text(category.displayName),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (category.isDefault)
-                              const Text(
-                                'Default Category',
-                                style: TextStyle(
-                                  fontStyle: FontStyle.italic,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            Text(
-                              category.isActive ? 'Active' : 'Disabled',
-                              style: TextStyle(
-                                color: category.isActive
-                                    ? Colors.green
-                                    : Colors.orange,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Switch(
-                              value: category.isActive,
-                              onChanged: (_) => _toggleCategoryStatus(category),
-                            ),
-                            PopupMenuButton<String>(
-                              onSelected: (action) {
-                                switch (action) {
-                                  case 'edit':
-                                    _addOrEditCategory(category);
-                                    break;
-                                  case 'delete':
-                                    _deleteCategory(category);
-                                    break;
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: ListTile(
-                                    leading: Icon(Icons.edit),
-                                    title: Text('Edit'),
-                                  ),
-                                ),
-                                if (!category.isDefault)
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: ListTile(
-                                      leading: Icon(Icons.delete, color: Colors.red),
-                                      title: Text('Delete'),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
+                    ),
+                    Text(
+                      group.subtitle,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
+              ),
+              ...groupedCategories.map(_buildCategoryTile),
+            ],
+          );
+        }),
+        if (custom.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Custom Standard Categories',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          ...custom.map(_buildCategoryTile),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCategoryTile(StandardCategory category) {
+    return Card(
+      margin: const EdgeInsets.symmetric(
+        horizontal: 16.0,
+        vertical: 4.0,
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: category.color.withValues(alpha: 0.2),
+          child: Text(
+            category.emoji,
+            style: const TextStyle(fontSize: 20),
+          ),
+        ),
+        title: Text(category.displayName),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (category.isDefault)
+              const Text(
+                'Default Category',
+                style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                  fontSize: 12,
+                ),
+              ),
+            Text(
+              category.isActive ? 'Active' : 'Disabled',
+              style: TextStyle(
+                color: category.isActive ? Colors.green : Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Switch(
+              value: category.isActive,
+              onChanged: (_) => _toggleCategoryStatus(category),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (action) {
+                switch (action) {
+                  case 'edit':
+                    _addOrEditCategory(category);
+                    break;
+                  case 'delete':
+                    _deleteCategory(category);
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: ListTile(
+                    leading: Icon(Icons.edit),
+                    title: Text('Edit'),
+                  ),
+                ),
+                if (!category.isDefault)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      leading: Icon(Icons.delete, color: Colors.red),
+                      title: Text('Delete'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -263,10 +329,46 @@ class _CategoryEditDialogState extends State<_CategoryEditDialog> {
 
   // Common emojis for categories
   static const _commonEmojis = [
-    '🍕', '🚗', '🛍️', '🏠', '💳', '🎬', '💡', '🏥', '📚', '💰',
-    '🔄', '🎁', '📈', '📌', '❓', '💼', '🛒', '☕', '🎵', '🎮',
-    '📱', '✈️', '🚌', '⛽', '🎯', '🔧', '💻', '👕', '🍷', '🏋️',
-    '🐾', '🌳', '⚡', '🚨', '🎨', '🍔', '📦', '🎪', '🏆', '🎂',
+    '🍕',
+    '🚗',
+    '🛍️',
+    '🏠',
+    '💳',
+    '🎬',
+    '💡',
+    '🏥',
+    '📚',
+    '💰',
+    '🔄',
+    '🎁',
+    '📈',
+    '📌',
+    '❓',
+    '💼',
+    '🛒',
+    '☕',
+    '🎵',
+    '🎮',
+    '📱',
+    '✈️',
+    '🚌',
+    '⛽',
+    '🎯',
+    '🔧',
+    '💻',
+    '👕',
+    '🍷',
+    '🏋️',
+    '🐾',
+    '🌳',
+    '⚡',
+    '🚨',
+    '🎨',
+    '🍔',
+    '📦',
+    '🎪',
+    '🏆',
+    '🎂',
   ];
 
   @override
@@ -274,7 +376,8 @@ class _CategoryEditDialogState extends State<_CategoryEditDialog> {
     super.initState();
     final category = widget.category;
     _nameController = TextEditingController(text: category?.name ?? '');
-    _displayNameController = TextEditingController(text: category?.displayName ?? '');
+    _displayNameController =
+        TextEditingController(text: category?.displayName ?? '');
     _emojiController = TextEditingController(text: category?.emoji ?? '🏷️');
     _selectedColor = category?.color ?? Colors.teal;
   }
@@ -304,29 +407,46 @@ class _CategoryEditDialogState extends State<_CategoryEditDialog> {
             shrinkWrap: true,
             crossAxisCount: 6,
             children: [
-              Colors.red, Colors.pink, Colors.purple, Colors.deepPurple,
-              Colors.indigo, Colors.blue, Colors.lightBlue, Colors.cyan,
-              Colors.teal, Colors.green, Colors.lightGreen, Colors.lime,
-              Colors.yellow, Colors.amber, Colors.orange, Colors.deepOrange,
-              Colors.brown, Colors.grey, Colors.blueGrey, Colors.black,
-            ].map((color) => GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedColor = color;
-                });
-                Navigator.of(context).pop();
-              },
-              child: Container(
-                margin: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: _selectedColor == color
-                    ? Border.all(color: Colors.white, width: 3)
-                    : null,
-                ),
-              ),
-            )).toList(),
+              Colors.red,
+              Colors.pink,
+              Colors.purple,
+              Colors.deepPurple,
+              Colors.indigo,
+              Colors.blue,
+              Colors.lightBlue,
+              Colors.cyan,
+              Colors.teal,
+              Colors.green,
+              Colors.lightGreen,
+              Colors.lime,
+              Colors.yellow,
+              Colors.amber,
+              Colors.orange,
+              Colors.deepOrange,
+              Colors.brown,
+              Colors.grey,
+              Colors.blueGrey,
+              Colors.black,
+            ]
+                .map((color) => GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedColor = color;
+                        });
+                        Navigator.of(context).pop();
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: _selectedColor == color
+                              ? Border.all(color: Colors.white, width: 3)
+                              : null,
+                        ),
+                      ),
+                    ))
+                .toList(),
           ),
         ),
       ),
@@ -400,7 +520,9 @@ class _CategoryEditDialogState extends State<_CategoryEditDialog> {
                     ),
                     child: Center(
                       child: Text(
-                        _emojiController.text.isNotEmpty ? _emojiController.text : '🏷️',
+                        _emojiController.text.isNotEmpty
+                            ? _emojiController.text
+                            : '🏷️',
                         style: const TextStyle(fontSize: 24),
                       ),
                     ),
@@ -408,22 +530,26 @@ class _CategoryEditDialogState extends State<_CategoryEditDialog> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text('Common Emojis:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('Common Emojis:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _commonEmojis.map((emoji) => GestureDetector(
-                  onTap: () => _selectEmoji(emoji),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(emoji, style: const TextStyle(fontSize: 20)),
-                  ),
-                )).toList(),
+                children: _commonEmojis
+                    .map((emoji) => GestureDetector(
+                          onTap: () => _selectEmoji(emoji),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(emoji,
+                                style: const TextStyle(fontSize: 20)),
+                          ),
+                        ))
+                    .toList(),
               ),
               const SizedBox(height: 16),
               Row(
@@ -461,14 +587,16 @@ class _CategoryEditDialogState extends State<_CategoryEditDialog> {
           onPressed: () {
             if (_formKey.currentState?.validate() == true) {
               final category = StandardCategory(
-                id: widget.category?.id ?? 'custom_${DateTime.now().millisecondsSinceEpoch}',
+                id: widget.category?.id ??
+                    'custom_${DateTime.now().millisecondsSinceEpoch}',
                 name: _nameController.text.trim(),
                 displayName: _displayNameController.text.trim(),
                 emoji: _emojiController.text.trim(),
                 colorValue: _selectedColor.toARGB32(),
                 isDefault: widget.category?.isDefault ?? false,
                 isActive: widget.category?.isActive ?? true,
-                sortOrder: widget.category?.sortOrder ?? DateTime.now().millisecondsSinceEpoch,
+                sortOrder: widget.category?.sortOrder ??
+                    DateTime.now().millisecondsSinceEpoch,
                 createdAt: widget.category?.createdAt ?? DateTime.now(),
               );
               Navigator.of(context).pop(category);

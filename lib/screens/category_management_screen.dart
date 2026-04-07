@@ -10,7 +10,8 @@ class CategoryManagementScreen extends StatefulWidget {
   const CategoryManagementScreen({super.key});
 
   @override
-  State<CategoryManagementScreen> createState() => _CategoryManagementScreenState();
+  State<CategoryManagementScreen> createState() =>
+      _CategoryManagementScreenState();
 }
 
 class _CategoryManagementScreenState extends State<CategoryManagementScreen>
@@ -23,9 +24,36 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen>
 
   // Predefined emoji options for custom categories
   static const _emojiOptions = [
-    '🏷️', '🏋️', '🐾', '🎮', '🎸', '🌿', '🧘', '✈️', '👔', '🔧',
-    '🎨', '📷', '🍺', '☕', '💇', '🛒', '🚴', '🧹', '🧳', '💒',
-    '🐶', '🌮', '🏊', '🎭', '🧩', '💡', '📦', '🛠️', '🎁', '🏡',
+    '🏷️',
+    '🏋️',
+    '🐾',
+    '🎮',
+    '🎸',
+    '🌿',
+    '🧘',
+    '✈️',
+    '👔',
+    '🔧',
+    '🎨',
+    '📷',
+    '🍺',
+    '☕',
+    '💇',
+    '🛒',
+    '🚴',
+    '🧹',
+    '🧳',
+    '💒',
+    '🐶',
+    '🌮',
+    '🏊',
+    '🎭',
+    '🧩',
+    '💡',
+    '📦',
+    '🛠️',
+    '🎁',
+    '🏡',
   ];
 
   static const _colorOptions = [
@@ -97,71 +125,108 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen>
       return const Center(child: CircularProgressIndicator());
     }
 
-    final categories = _standardCategories
-        .where((cat) => cat.id != 'uncategorized')
-        .toList();
+    final categories =
+        _standardCategories.where((cat) => cat.id != 'uncategorized').toList();
 
-    return ListView.builder(
+    final categoriesById = {
+      for (final category in categories) category.id: category
+    };
+
+    return ListView(
       padding: const EdgeInsets.all(16),
-      itemCount: categories.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Card(
-              color: Colors.blue.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Standard Categories',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Toggle categories on/off to customize which ones appear in your filters and analytics.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        ...StandardCategory.defaultGroups.map((group) {
+          final groupedCategories = group.categoryIds
+              .map((id) => categoriesById[id])
+              .whereType<StandardCategory>()
+              .toList();
+          if (groupedCategories.isEmpty) {
+            return const SizedBox.shrink();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.info_outline, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Standard Categories',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade700,
+                    Text(
+                      group.title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
                           ),
-                        ),
-                      ],
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Toggle categories on/off to customize which ones appear in your filters and analytics.',
-                      style: TextStyle(fontSize: 13),
+                    Text(
+                      group.subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
                   ],
                 ),
               ),
-            ),
+              ...groupedCategories.map((category) {
+                final isEnabled = _preferences!.isEnabled(category.id);
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: SwitchListTile(
+                    value: isEnabled,
+                    onChanged: (value) =>
+                        _toggleStandardCategory(category, value),
+                    title: Row(
+                      children: [
+                        Text(category.emoji,
+                            style: const TextStyle(fontSize: 20)),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(category.displayName)),
+                      ],
+                    ),
+                    secondary: Icon(
+                      isEnabled ? Icons.visibility : Icons.visibility_off,
+                      color: isEnabled ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                );
+              }),
+            ],
           );
-        }
-
-        final category = categories[index - 1];
-        final isEnabled = _preferences!.isEnabled(category.id);
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: SwitchListTile(
-            value: isEnabled,
-            onChanged: (value) => _toggleStandardCategory(category, value),
-            title: Row(
-              children: [
-                Text(category.emoji, style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 12),
-                Text(category.displayName),
-              ],
-            ),
-            secondary: Icon(
-              isEnabled ? Icons.visibility : Icons.visibility_off,
-              color: isEnabled ? Colors.green : Colors.grey,
-            ),
-          ),
-        );
-      },
+        }),
+      ],
     );
   }
 
@@ -206,8 +271,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('🏷️',
-                          style: TextStyle(fontSize: 48)),
+                      const Text('🏷️', style: TextStyle(fontSize: 48)),
                       const SizedBox(height: 16),
                       const Text('No custom categories yet',
                           style: TextStyle(
@@ -233,8 +297,8 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen>
                     final cat = _customCategories[index];
                     return _CustomCategoryTile(
                       category: cat,
-                      onEdit: () => _showCustomCategoryEditor(context,
-                          existing: cat),
+                      onEdit: () =>
+                          _showCustomCategoryEditor(context, existing: cat),
                       onDelete: () => _deleteCustomCategory(cat),
                     );
                   },
@@ -388,8 +452,7 @@ class _CustomCategoryEditorState extends State<_CustomCategoryEditor> {
   @override
   void initState() {
     super.initState();
-    _nameController =
-        TextEditingController(text: widget.existing?.name ?? '');
+    _nameController = TextEditingController(text: widget.existing?.name ?? '');
     _selectedEmoji = widget.existing?.emoji ?? widget.emojiOptions.first;
     _selectedColorValue =
         widget.existing?.colorValue ?? widget.colorOptions.first.toARGB32();
@@ -434,8 +497,7 @@ class _CustomCategoryEditorState extends State<_CustomCategoryEditor> {
               radius: 32,
               backgroundColor:
                   Color(_selectedColorValue).withValues(alpha: 0.25),
-              child: Text(_selectedEmoji,
-                  style: const TextStyle(fontSize: 28)),
+              child: Text(_selectedEmoji, style: const TextStyle(fontSize: 28)),
             ),
           ),
           const SizedBox(height: 20),

@@ -19,7 +19,113 @@ import '../constants/transfer_constants.dart';
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 7; // v7: transfer linking system
+  static const int _dbVersion = 8; // v8: refreshed standard category catalog
+
+  static String? _legacyCategoryNameForStandardCategoryId(
+      String? standardCategoryId) {
+    return TransactionCategory.fromStandardCategoryId(standardCategoryId)?.name;
+  }
+
+  static Map<String, String> get _legacyEnumToStandardCategoryId => {
+        'foodDining': TransactionCategory.foodDining.standardCategoryId,
+        'travelTransport':
+            TransactionCategory.travelTransport.standardCategoryId,
+        'shopping': TransactionCategory.shopping.standardCategoryId,
+        'rentHousing': TransactionCategory.rentHousing.standardCategoryId,
+        'emiLoans': TransactionCategory.emiLoans.standardCategoryId,
+        'entertainment': TransactionCategory.entertainment.standardCategoryId,
+        'billsUtilities': TransactionCategory.billsUtilities.standardCategoryId,
+        'healthMedical': TransactionCategory.healthMedical.standardCategoryId,
+        'education': TransactionCategory.education.standardCategoryId,
+        'salaryIncome': TransactionCategory.salaryIncome.standardCategoryId,
+        'transfer': TransactionCategory.transfer.standardCategoryId,
+        'cashback': TransactionCategory.cashback.standardCategoryId,
+        'investment': TransactionCategory.investment.standardCategoryId,
+        'other': TransactionCategory.other.standardCategoryId,
+        'uncategorized': TransactionCategory.uncategorized.standardCategoryId,
+      };
+
+  static Future<void> _seedDefaultStandardCategories(Database db) async {
+    for (final category in StandardCategory.defaultCategories) {
+      await db.insert(
+        'standard_categories',
+        category.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  static Future<void> _migrateLegacyStandardCategoryIds(Database db) async {
+    for (final entry in StandardCategory.legacyIdRemap.entries) {
+      await db.update(
+        'transactions',
+        {'standard_category_id': entry.value},
+        where: 'standard_category_id = ?',
+        whereArgs: [entry.key],
+      );
+    }
+
+    final desiredIds =
+        StandardCategory.defaultCategories.map((c) => c.id).toSet().toList();
+    final obsoleteDefaultIds = StandardCategory.legacyIdRemap.keys.toList();
+
+    for (final obsoleteId in obsoleteDefaultIds) {
+      await db.delete(
+        'standard_categories',
+        where: 'id = ? AND is_default = 1',
+        whereArgs: [obsoleteId],
+      );
+    }
+
+    await db.delete(
+      'standard_categories',
+      where:
+          'is_default = 1 AND id NOT IN (${List.filled(desiredIds.length, '?').join(', ')})',
+      whereArgs: desiredIds,
+    );
+  }
+
+  static Future<void> _migrateCategoryPreferences(Database db) async {
+    final rows = await db.query(
+      'user_settings',
+      where: 'key = ?',
+      whereArgs: ['category_preferences'],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+
+    final rawValue = rows.first['value'] as String?;
+    if (rawValue == null || rawValue.isEmpty) return;
+
+    try {
+      final map = json.decode(rawValue) as Map<String, dynamic>;
+      final savedIds =
+          (map['enabled_category_ids'] as List<dynamic>? ?? []).cast<String>();
+      final normalizedIds = savedIds
+          .map((id) => StandardCategory.legacyIdRemap[id] ?? id)
+          .toSet();
+      normalizedIds.addAll(StandardCategory.newlyAddedDefaultIds);
+
+      await db.update(
+        'user_settings',
+        {
+          'value': json.encode({
+            'enabled_category_ids': normalizedIds.toList(),
+          }),
+        },
+        where: 'key = ?',
+        whereArgs: ['category_preferences'],
+      );
+    } catch (_) {
+      // Ignore malformed legacy settings and fall back to runtime defaults.
+    }
+  }
+
+  static Future<void> _syncStandardCategoryCatalog(Database db) async {
+    await _migrateLegacyStandardCategoryIds(db);
+    await _seedDefaultStandardCategories(db);
+    await _migrateCategoryPreferences(db);
+  }
 
   /// Initialize the database
   static Future<Database> get database async {
@@ -37,6 +143,9 @@ class LocalStorageService {
       version: _dbVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        await _syncStandardCategoryCatalog(db);
+      },
     );
   }
 
@@ -194,21 +303,126 @@ class LocalStorageService {
     // Populate default standard categories
     final now = DateTime.now().millisecondsSinceEpoch;
     final defaultCategories = [
-      ['food_dining', 'foodDining', 'Food & Dining', '🍕', 4294924800, 0], // Colors.orange.value
-      ['travel_transport', 'travelTransport', 'Travel & Transport', '🚗', 4278190335, 1], // Colors.blue.value
-      ['shopping', 'shopping', 'Shopping', '🛍️', 4287245282, 2], // Colors.purple.value
-      ['rent_housing', 'rentHousing', 'Rent & Housing', '🏠', 4280391411, 3], // Colors.brown.value
-      ['emi_loans', 'emiLoans', 'EMI & Loans', '💳', 4294198070, 4], // Colors.red.value
-      ['entertainment', 'entertainment', 'Entertainment', '🎬', 4291467747, 5], // Colors.pink.value
-      ['bills_utilities', 'billsUtilities', 'Bills & Utilities', '💡', 4294961664, 6], // Colors.yellow.value
-      ['health_medical', 'healthMedical', 'Health & Medical', '🏥', 4283215696, 7], // Colors.green.value
-      ['education', 'education', 'Education', '📚', 4281367748, 8], // Colors.indigo.value
-      ['salary_income', 'salaryIncome', 'Salary & Income', '💰', 4283002648, 9], // Colors.green.shade700.value
-      ['transfer', 'transfer', 'Transfer', '🔄', 4286611584, 10], // Colors.grey.value
-      ['cashback', 'cashback', 'Cashback', '🎁', 4278238420, 11], // Colors.teal.value
-      ['investment', 'investment', 'Investment', '📈', 4284513675, 12], // Colors.deepPurple.value
-      ['other', 'other', 'Other', '📌', 4285755919, 13], // Colors.blueGrey.value
-      ['uncategorized', 'uncategorized', 'Uncategorized', '❓', 4286611584, 14], // Colors.grey.shade500.value
+      [
+        'food_dining',
+        'foodDining',
+        'Food & Dining',
+        '🍕',
+        4294924800,
+        0
+      ], // Colors.orange.value
+      [
+        'travel_transport',
+        'travelTransport',
+        'Travel & Transport',
+        '🚗',
+        4278190335,
+        1
+      ], // Colors.blue.value
+      [
+        'shopping',
+        'shopping',
+        'Shopping',
+        '🛍️',
+        4287245282,
+        2
+      ], // Colors.purple.value
+      [
+        'rent_housing',
+        'rentHousing',
+        'Rent & Housing',
+        '🏠',
+        4280391411,
+        3
+      ], // Colors.brown.value
+      [
+        'emi_loans',
+        'emiLoans',
+        'EMI & Loans',
+        '💳',
+        4294198070,
+        4
+      ], // Colors.red.value
+      [
+        'entertainment',
+        'entertainment',
+        'Entertainment',
+        '🎬',
+        4291467747,
+        5
+      ], // Colors.pink.value
+      [
+        'bills_utilities',
+        'billsUtilities',
+        'Bills & Utilities',
+        '💡',
+        4294961664,
+        6
+      ], // Colors.yellow.value
+      [
+        'health_medical',
+        'healthMedical',
+        'Health & Medical',
+        '🏥',
+        4283215696,
+        7
+      ], // Colors.green.value
+      [
+        'education',
+        'education',
+        'Education',
+        '📚',
+        4281367748,
+        8
+      ], // Colors.indigo.value
+      [
+        'salary_income',
+        'salaryIncome',
+        'Salary & Income',
+        '💰',
+        4283002648,
+        9
+      ], // Colors.green.shade700.value
+      [
+        'transfer',
+        'transfer',
+        'Transfer',
+        '🔄',
+        4286611584,
+        10
+      ], // Colors.grey.value
+      [
+        'cashback',
+        'cashback',
+        'Cashback',
+        '🎁',
+        4278238420,
+        11
+      ], // Colors.teal.value
+      [
+        'investment',
+        'investment',
+        'Investment',
+        '📈',
+        4284513675,
+        12
+      ], // Colors.deepPurple.value
+      [
+        'other',
+        'other',
+        'Other',
+        '📌',
+        4285755919,
+        13
+      ], // Colors.blueGrey.value
+      [
+        'uncategorized',
+        'uncategorized',
+        'Uncategorized',
+        '❓',
+        4286611584,
+        14
+      ], // Colors.grey.shade500.value
     ];
 
     for (final category in defaultCategories) {
@@ -240,8 +454,7 @@ class LocalStorageService {
         'CREATE INDEX idx_transactions_standard_category ON transactions(standard_category_id)');
     await db.execute(
         'CREATE INDEX idx_standard_categories_active ON standard_categories(is_active)');
-    await db.execute(
-        'CREATE INDEX idx_alerts_read ON alerts(is_read)');
+    await db.execute('CREATE INDEX idx_alerts_read ON alerts(is_read)');
   }
 
   static Future<void> _onUpgrade(
@@ -295,10 +508,8 @@ class LocalStorageService {
     }
     if (oldVersion < 3) {
       // Add category and note columns
-      await db.execute(
-          'ALTER TABLE transactions ADD COLUMN category TEXT');
-      await db.execute(
-          'ALTER TABLE transactions ADD COLUMN note TEXT');
+      await db.execute('ALTER TABLE transactions ADD COLUMN category TEXT');
+      await db.execute('ALTER TABLE transactions ADD COLUMN note TEXT');
 
       // Create budgets table
       await db.execute('''
@@ -410,21 +621,126 @@ class LocalStorageService {
       // Populate with default standard categories
       final now = DateTime.now().millisecondsSinceEpoch;
       final defaultCategories = [
-        ['food_dining', 'foodDining', 'Food & Dining', '🍕', 4294924800, 0], // Colors.orange.value
-        ['travel_transport', 'travelTransport', 'Travel & Transport', '🚗', 4278190335, 1], // Colors.blue.value
-        ['shopping', 'shopping', 'Shopping', '🛍️', 4287245282, 2], // Colors.purple.value
-        ['rent_housing', 'rentHousing', 'Rent & Housing', '🏠', 4280391411, 3], // Colors.brown.value
-        ['emi_loans', 'emiLoans', 'EMI & Loans', '💳', 4294198070, 4], // Colors.red.value
-        ['entertainment', 'entertainment', 'Entertainment', '🎬', 4291467747, 5], // Colors.pink.value
-        ['bills_utilities', 'billsUtilities', 'Bills & Utilities', '💡', 4294961664, 6], // Colors.yellow.value
-        ['health_medical', 'healthMedical', 'Health & Medical', '🏥', 4283215696, 7], // Colors.green.value
-        ['education', 'education', 'Education', '📚', 4281367748, 8], // Colors.indigo.value
-        ['salary_income', 'salaryIncome', 'Salary & Income', '💰', 4283002648, 9], // Colors.green.shade700.value
-        ['transfer', 'transfer', 'Transfer', '🔄', 4286611584, 10], // Colors.grey.value
-        ['cashback', 'cashback', 'Cashback', '🎁', 4278238420, 11], // Colors.teal.value
-        ['investment', 'investment', 'Investment', '📈', 4284513675, 12], // Colors.deepPurple.value
-        ['other', 'other', 'Other', '📌', 4285755919, 13], // Colors.blueGrey.value
-        ['uncategorized', 'uncategorized', 'Uncategorized', '❓', 4286611584, 14], // Colors.grey.shade500.value
+        [
+          'food_dining',
+          'foodDining',
+          'Food & Dining',
+          '🍕',
+          4294924800,
+          0
+        ], // Colors.orange.value
+        [
+          'travel_transport',
+          'travelTransport',
+          'Travel & Transport',
+          '🚗',
+          4278190335,
+          1
+        ], // Colors.blue.value
+        [
+          'shopping',
+          'shopping',
+          'Shopping',
+          '🛍️',
+          4287245282,
+          2
+        ], // Colors.purple.value
+        [
+          'rent_housing',
+          'rentHousing',
+          'Rent & Housing',
+          '🏠',
+          4280391411,
+          3
+        ], // Colors.brown.value
+        [
+          'emi_loans',
+          'emiLoans',
+          'EMI & Loans',
+          '💳',
+          4294198070,
+          4
+        ], // Colors.red.value
+        [
+          'entertainment',
+          'entertainment',
+          'Entertainment',
+          '🎬',
+          4291467747,
+          5
+        ], // Colors.pink.value
+        [
+          'bills_utilities',
+          'billsUtilities',
+          'Bills & Utilities',
+          '💡',
+          4294961664,
+          6
+        ], // Colors.yellow.value
+        [
+          'health_medical',
+          'healthMedical',
+          'Health & Medical',
+          '🏥',
+          4283215696,
+          7
+        ], // Colors.green.value
+        [
+          'education',
+          'education',
+          'Education',
+          '📚',
+          4281367748,
+          8
+        ], // Colors.indigo.value
+        [
+          'salary_income',
+          'salaryIncome',
+          'Salary & Income',
+          '💰',
+          4283002648,
+          9
+        ], // Colors.green.shade700.value
+        [
+          'transfer',
+          'transfer',
+          'Transfer',
+          '🔄',
+          4286611584,
+          10
+        ], // Colors.grey.value
+        [
+          'cashback',
+          'cashback',
+          'Cashback',
+          '🎁',
+          4278238420,
+          11
+        ], // Colors.teal.value
+        [
+          'investment',
+          'investment',
+          'Investment',
+          '📈',
+          4284513675,
+          12
+        ], // Colors.deepPurple.value
+        [
+          'other',
+          'other',
+          'Other',
+          '📌',
+          4285755919,
+          13
+        ], // Colors.blueGrey.value
+        [
+          'uncategorized',
+          'uncategorized',
+          'Uncategorized',
+          '❓',
+          4286611584,
+          14
+        ], // Colors.grey.shade500.value
       ];
 
       for (final category in defaultCategories) {
@@ -442,25 +758,7 @@ class LocalStorageService {
       }
 
       // Migrate existing category enum values to standard_category_id references
-      final categoryMigrations = {
-        'foodDining': 'food_dining',
-        'travelTransport': 'travel_transport',
-        'shopping': 'shopping',
-        'rentHousing': 'rent_housing',
-        'emiLoans': 'emi_loans',
-        'entertainment': 'entertainment',
-        'billsUtilities': 'bills_utilities',
-        'healthMedical': 'health_medical',
-        'education': 'education',
-        'salaryIncome': 'salary_income',
-        'transfer': 'transfer',
-        'cashback': 'cashback',
-        'investment': 'investment',
-        'other': 'other',
-        'uncategorized': 'uncategorized',
-      };
-
-      for (final entry in categoryMigrations.entries) {
+      for (final entry in _legacyEnumToStandardCategoryId.entries) {
         await db.update(
           'transactions',
           {'standard_category_id': entry.value},
@@ -493,6 +791,10 @@ class LocalStorageService {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_transactions_transfer_partner ON transactions(transfer_partner_id)');
     }
+
+    if (oldVersion < 8) {
+      await _syncStandardCategoryCatalog(db);
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -521,8 +823,8 @@ class LocalStorageService {
         'account_id': tx.accountId,
         'is_user_corrected': tx.isUserCorrected ? 1 : 0,
         'is_salary': tx.isSalary ? 1 : 0,
-        'category': tx.category?.name,
-        'standard_category_id': tx.standardCategoryId,
+        'category': tx.effectiveLegacyCategory?.name,
+        'standard_category_id': tx.effectiveStandardCategoryId,
         'note': tx.note,
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
@@ -530,7 +832,8 @@ class LocalStorageService {
         TransferConstants.transferGroupIdField: tx.transferGroupId,
         TransferConstants.transferPartnerIdField: tx.transferPartnerId,
         TransferConstants.isTransferSourceField: tx.isTransferSource ? 1 : 0,
-        TransferConstants.isTransferDestinationField: tx.isTransferDestination ? 1 : 0,
+        TransferConstants.isTransferDestinationField:
+            tx.isTransferDestination ? 1 : 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -563,7 +866,8 @@ class LocalStorageService {
           'account_id': tx.accountId,
           'is_user_corrected': tx.isUserCorrected ? 1 : 0,
           'is_salary': tx.isSalary ? 1 : 0,
-          'category': tx.category?.name,
+          'category': tx.effectiveLegacyCategory?.name,
+          'standard_category_id': tx.effectiveStandardCategoryId,
           'note': tx.note,
           'tag': tx.tag,
           'is_ignored': tx.isIgnored ? 1 : 0,
@@ -593,8 +897,8 @@ class LocalStorageService {
         'account_id': tx.accountId,
         'is_user_corrected': 1,
         'is_salary': tx.isSalary ? 1 : 0,
-        'category': tx.category?.name,
-        'standard_category_id': tx.standardCategoryId,
+        'category': tx.effectiveLegacyCategory?.name,
+        'standard_category_id': tx.effectiveStandardCategoryId,
         'note': tx.note,
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
@@ -602,7 +906,8 @@ class LocalStorageService {
         TransferConstants.transferGroupIdField: tx.transferGroupId,
         TransferConstants.transferPartnerIdField: tx.transferPartnerId,
         TransferConstants.isTransferSourceField: tx.isTransferSource ? 1 : 0,
-        TransferConstants.isTransferDestinationField: tx.isTransferDestination ? 1 : 0,
+        TransferConstants.isTransferDestinationField:
+            tx.isTransferDestination ? 1 : 0,
       },
       where: 'id = ?',
       whereArgs: [tx.id],
@@ -610,7 +915,8 @@ class LocalStorageService {
   }
 
   /// Update multiple transactions atomically (for transfer operations)
-  static Future<void> updateTransactionsAtomic(List<Transaction> transactions) async {
+  static Future<void> updateTransactionsAtomic(
+      List<Transaction> transactions) async {
     final db = await database;
 
     // Use database transaction for atomic operation
@@ -627,8 +933,8 @@ class LocalStorageService {
             'account_id': tx.accountId,
             'is_user_corrected': 1,
             'is_salary': tx.isSalary ? 1 : 0,
-            'category': tx.category?.name,
-            'standard_category_id': tx.standardCategoryId,
+            'category': tx.effectiveLegacyCategory?.name,
+            'standard_category_id': tx.effectiveStandardCategoryId,
             'note': tx.note,
             'tag': tx.tag,
             'is_ignored': tx.isIgnored ? 1 : 0,
@@ -702,16 +1008,21 @@ class LocalStorageService {
               (c) => c.name == row['category'],
               orElse: () => TransactionCategory.uncategorized,
             )
-          : null,
+          : TransactionCategory.fromStandardCategoryId(
+              row['standard_category_id'] as String?,
+            ),
       standardCategoryId: row['standard_category_id'] as String?,
       note: row['note'] as String?,
       tag: row['tag'] as String?,
       isIgnored: (row['is_ignored'] as int?) == 1,
       customCategoryId: row['custom_category_id'] as String?,
       transferGroupId: row[TransferConstants.transferGroupIdField] as String?,
-      transferPartnerId: row[TransferConstants.transferPartnerIdField] as String?,
-      isTransferSource: (row[TransferConstants.isTransferSourceField] as int?) == 1,
-      isTransferDestination: (row[TransferConstants.isTransferDestinationField] as int?) == 1,
+      transferPartnerId:
+          row[TransferConstants.transferPartnerIdField] as String?,
+      isTransferSource:
+          (row[TransferConstants.isTransferSourceField] as int?) == 1,
+      isTransferDestination:
+          (row[TransferConstants.isTransferDestinationField] as int?) == 1,
     );
   }
 
@@ -1280,7 +1591,10 @@ class LocalStorageService {
     final db = await database;
     await db.update(
       'transactions',
-      {'category': category.name},
+      {
+        'category': category.name,
+        'standard_category_id': category.standardCategoryId,
+      },
       where: 'id = ?',
       whereArgs: [txId],
     );
@@ -1299,8 +1613,7 @@ class LocalStorageService {
   }
 
   /// Update transaction note
-  static Future<void> updateTransactionNote(
-      String txId, String? note) async {
+  static Future<void> updateTransactionNote(String txId, String? note) async {
     final db = await database;
     await db.update(
       'transactions',
@@ -1374,8 +1687,7 @@ class LocalStorageService {
   /// Get all user-created custom categories
   static Future<List<CustomCategory>> getAllCustomCategories() async {
     final db = await database;
-    final rows =
-        await db.query('custom_categories', orderBy: 'created_at ASC');
+    final rows = await db.query('custom_categories', orderBy: 'created_at ASC');
     return rows.map((r) => CustomCategory.fromMap(r)).toList();
   }
 
@@ -1442,7 +1754,8 @@ class LocalStorageService {
   }
 
   /// Update standard category active status
-  static Future<void> updateStandardCategoryStatus(String categoryId, bool isActive) async {
+  static Future<void> updateStandardCategoryStatus(
+      String categoryId, bool isActive) async {
     final db = await database;
     await db.update(
       'standard_categories',
@@ -1459,11 +1772,13 @@ class LocalStorageService {
     // First check if it's a default category
     final category = await getStandardCategoryById(categoryId);
     if (category?.isDefault == true) {
-      throw Exception('Cannot delete default categories. Use updateStandardCategoryStatus to disable instead.');
+      throw Exception(
+          'Cannot delete default categories. Use updateStandardCategoryStatus to disable instead.');
     }
 
     // Delete the category
-    await db.delete('standard_categories', where: 'id = ?', whereArgs: [categoryId]);
+    await db.delete('standard_categories',
+        where: 'id = ?', whereArgs: [categoryId]);
 
     // Unlink from transactions (set to uncategorized)
     await db.update(
@@ -1480,7 +1795,11 @@ class LocalStorageService {
     final db = await database;
     await db.update(
       'transactions',
-      {'standard_category_id': standardCategoryId},
+      {
+        'standard_category_id': standardCategoryId,
+        'category':
+            _legacyCategoryNameForStandardCategoryId(standardCategoryId),
+      },
       where: 'id = ?',
       whereArgs: [txId],
     );
@@ -1498,9 +1817,9 @@ class LocalStorageService {
 
     return Map.fromEntries(
       rows.map((r) => MapEntry(
-        r['standard_category_id'] as String,
-        r['usage_count'] as int,
-      )),
+            r['standard_category_id'] as String,
+            r['usage_count'] as int,
+          )),
     );
   }
 
@@ -1512,7 +1831,12 @@ class LocalStorageService {
     if (val == null) return CategoryPreferences.defaultPreferences();
     try {
       final map = json.decode(val) as Map<String, dynamic>;
-      return CategoryPreferences.fromMap(map);
+      final prefs = CategoryPreferences.fromMap(map);
+      final normalizedIds = prefs.enabledCategoryIds
+          .map((id) => StandardCategory.legacyIdRemap[id] ?? id)
+          .toSet()
+        ..addAll(StandardCategory.newlyAddedDefaultIds);
+      return prefs.copyWith(enabledCategoryIds: normalizedIds);
     } catch (_) {
       return CategoryPreferences.defaultPreferences();
     }
@@ -1619,7 +1943,10 @@ class LocalStorageService {
     for (final entry in updates.entries) {
       batch.update(
         'transactions',
-        {'category': entry.value.name},
+        {
+          'category': entry.value.name,
+          'standard_category_id': entry.value.standardCategoryId,
+        },
         where: 'id = ?',
         whereArgs: [entry.key],
       );

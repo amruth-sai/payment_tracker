@@ -9,6 +9,7 @@ import '../models/transaction.dart';
 import '../models/merged_transfer.dart';
 import '../models/salary_cycle.dart';
 import '../models/custom_category.dart';
+import '../models/standard_category.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/merged_transfer_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
@@ -30,7 +31,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
   late TabController _tabController;
   String _search = '';
   String? _selectedBank;
-  TransactionCategory? _selectedCategory;
+  String? _selectedStandardCategoryId;
   SortOrder _sortOrder = SortOrder.none;
   List<SalaryCycle> _salaryCycles = [];
   SalaryCycle? _selectedCycle;
@@ -38,6 +39,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
   List<CustomCategory> _customCategories = [];
   CustomCategory? _selectedCustomCategory;
   bool _customCategoriesLoaded = false;
+  List<StandardCategory> _standardCategories = [];
+  bool _standardCategoriesLoaded = false;
 
   @override
   void initState() {
@@ -49,6 +52,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     );
     _loadSalaryCycles();
     _loadCustomCategories();
+    _loadStandardCategories();
   }
 
   Future<void> _loadSalaryCycles() async {
@@ -74,6 +78,16 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
       setState(() {
         _customCategories = categories;
         _customCategoriesLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _loadStandardCategories() async {
+    final categories = await LocalStorageService.getAllStandardCategories();
+    if (mounted) {
+      setState(() {
+        _standardCategories = categories;
+        _standardCategoriesLoaded = true;
       });
     }
   }
@@ -150,7 +164,11 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
         builder: (context, sms, _) {
           final allTxs = sms.transactions;
           final banks = _getUniqueBanks(allTxs);
-          final categories = _getUniqueCategories(allTxs);
+          final standardCategories = _getUniqueStandardCategories(allTxs);
+          final standardCategoriesById = _buildStandardCategoryMap();
+          final customCategoriesById = {
+            for (final category in _customCategories) category.id: category,
+          };
 
           return Column(
             children: [
@@ -185,7 +203,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                       ...banks.map((bank) => Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: FilterChip(
-                              label: Text(bank, style: const TextStyle(fontSize: 12)),
+                              label: Text(bank,
+                                  style: const TextStyle(fontSize: 12)),
                               selected: _selectedBank == bank,
                               onSelected: (_) => setState(() {
                                 _selectedBank =
@@ -198,7 +217,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                 ),
 
               // Category filter chips
-              if (categories.length > 1)
+              if (standardCategories.length > 1)
                 SizedBox(
                   height: 42,
                   child: ListView(
@@ -210,22 +229,24 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         child: FilterChip(
                           avatar: const Icon(Icons.category_outlined, size: 16),
                           label: const Text('All Categories'),
-                          selected: _selectedCategory == null,
-                          onSelected: (_) =>
-                              setState(() => _selectedCategory = null),
+                          selected: _selectedStandardCategoryId == null,
+                          onSelected: (_) => setState(
+                              () => _selectedStandardCategoryId = null),
                         ),
                       ),
-                      ...categories.map((cat) => Padding(
+                      ...standardCategories.map((cat) => Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: FilterChip(
                               avatar: Text(cat.emoji,
                                   style: const TextStyle(fontSize: 14)),
                               label: Text(cat.displayName,
                                   style: const TextStyle(fontSize: 12)),
-                              selected: _selectedCategory == cat,
+                              selected: _selectedStandardCategoryId == cat.id,
                               onSelected: (_) => setState(() {
-                                _selectedCategory =
-                                    _selectedCategory == cat ? null : cat;
+                                _selectedStandardCategoryId =
+                                    _selectedStandardCategoryId == cat.id
+                                        ? null
+                                        : cat.id;
                               }),
                             ),
                           )),
@@ -293,7 +314,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                             padding: const EdgeInsets.only(right: 8),
                             child: FilterChip(
                               avatar: cycle.isCurrent
-                                  ? const Icon(Icons.circle, size: 8, color: Colors.green)
+                                  ? const Icon(Icons.circle,
+                                      size: 8, color: Colors.green)
                                   : null,
                               label: Text(cycle.cycleLabel,
                                   style: const TextStyle(fontSize: 12)),
@@ -317,24 +339,27 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         transactions: _filter(sms.transactions),
                         search: _search,
                         sortOrder: _sortOrder,
-                        onSwipeIgnore: (tx) =>
-                            _handleSwipeIgnore(context, tx),
+                        standardCategoriesById: standardCategoriesById,
+                        customCategoriesById: customCategoriesById,
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
                         onSwipeToggleType: (tx) =>
                             _handleSwipeToggleType(context, tx)),
                     _TxList(
                         transactions: _filter(sms.credits),
                         search: _search,
                         sortOrder: _sortOrder,
-                        onSwipeIgnore: (tx) =>
-                            _handleSwipeIgnore(context, tx),
+                        standardCategoriesById: standardCategoriesById,
+                        customCategoriesById: customCategoriesById,
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
                         onSwipeToggleType: (tx) =>
                             _handleSwipeToggleType(context, tx)),
                     _TxList(
                         transactions: _filter(sms.debits),
                         search: _search,
                         sortOrder: _sortOrder,
-                        onSwipeIgnore: (tx) =>
-                            _handleSwipeIgnore(context, tx),
+                        standardCategoriesById: standardCategoriesById,
+                        customCategoriesById: customCategoriesById,
+                        onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
                         onSwipeToggleType: (tx) =>
                             _handleSwipeToggleType(context, tx)),
                   ],
@@ -374,8 +399,11 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     }
 
     // Category filter
-    if (_selectedCategory != null) {
-      result = result.where((t) => t.category == _selectedCategory).toList();
+    if (_selectedStandardCategoryId != null) {
+      result = result
+          .where((t) =>
+              t.effectiveStandardCategoryId == _selectedStandardCategoryId)
+          .toList();
     }
 
     // Custom category (My Categories) filter
@@ -406,10 +434,32 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     return sorted;
   }
 
-  List<TransactionCategory> _getUniqueCategories(List<Transaction> txs) {
-    final cats = <TransactionCategory>{};
+  Map<String, StandardCategory> _buildStandardCategoryMap() {
+    final categories = <String, StandardCategory>{
+      for (final category in StandardCategory.defaultCategories)
+        category.id: category,
+    };
+
+    if (_standardCategoriesLoaded) {
+      for (final category in _standardCategories) {
+        categories[category.id] = category;
+      }
+    }
+
+    return categories;
+  }
+
+  List<StandardCategory> _getUniqueStandardCategories(List<Transaction> txs) {
+    final categoriesById = _buildStandardCategoryMap();
+    final cats = <StandardCategory>{};
     for (final tx in txs) {
-      if (tx.category != null) cats.add(tx.category!);
+      final standardCategoryId = tx.effectiveStandardCategoryId;
+      if (standardCategoryId == null) continue;
+
+      final category = categoriesById[standardCategoryId];
+      if (category != null) {
+        cats.add(category);
+      }
     }
     final sorted = cats.toList()
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
@@ -441,8 +491,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
   }
 
   /// Swipe left → Toggle credit ↔ debit
-  Future<void> _handleSwipeToggleType(
-      BuildContext ctx, Transaction tx) async {
+  Future<void> _handleSwipeToggleType(BuildContext ctx, Transaction tx) async {
     final newType =
         tx.isCredit ? TransactionType.debit : TransactionType.credit;
     final corrected = tx.copyWith(type: newType, isUserCorrected: true);
@@ -478,6 +527,8 @@ class _TxList extends StatelessWidget {
   final List<Transaction> transactions;
   final String search;
   final SortOrder sortOrder;
+  final Map<String, StandardCategory> standardCategoriesById;
+  final Map<String, CustomCategory> customCategoriesById;
   final Function(Transaction)? onSwipeIgnore;
   final Function(Transaction)? onSwipeToggleType;
 
@@ -485,6 +536,8 @@ class _TxList extends StatelessWidget {
     required this.transactions,
     required this.search,
     required this.sortOrder,
+    required this.standardCategoriesById,
+    required this.customCategoriesById,
     this.onSwipeIgnore,
     this.onSwipeToggleType,
   });
@@ -511,7 +564,8 @@ class _TxList extends StatelessWidget {
 
     // Process transactions using existing utilities
     final mergedTransfers = TransferService.getMergedTransfers(transactions);
-    final standaloneTransactions = TransferService.getStandaloneTransactions(transactions);
+    final standaloneTransactions =
+        TransferService.getStandaloneTransactions(transactions);
 
     // Create unified display items list
     final displayItems = <dynamic>[];
@@ -522,8 +576,10 @@ class _TxList extends StatelessWidget {
     if (sortOrder != SortOrder.none) {
       displayItems.sort((a, b) {
         try {
-          final double amountA = a is MergedTransfer ? a.amount : (a as Transaction).amount;
-          final double amountB = b is MergedTransfer ? b.amount : (b as Transaction).amount;
+          final double amountA =
+              a is MergedTransfer ? a.amount : (a as Transaction).amount;
+          final double amountB =
+              b is MergedTransfer ? b.amount : (b as Transaction).amount;
 
           return sortOrder == SortOrder.ascending
               ? amountA.compareTo(amountB)
@@ -536,8 +592,10 @@ class _TxList extends StatelessWidget {
       // Sort by date (newest first)
       displayItems.sort((a, b) {
         try {
-          final DateTime dateA = a is MergedTransfer ? a.date : (a as Transaction).date;
-          final DateTime dateB = b is MergedTransfer ? b.date : (b as Transaction).date;
+          final DateTime dateA =
+              a is MergedTransfer ? a.date : (a as Transaction).date;
+          final DateTime dateB =
+              b is MergedTransfer ? b.date : (b as Transaction).date;
           return dateB.compareTo(dateA);
         } catch (e) {
           return 0; // Treat as equal if comparison fails
@@ -561,10 +619,13 @@ class _TxList extends StatelessWidget {
     if (totalDisplayCount != totalOriginalCount) {
       debugPrint('⚠️  Transaction display inconsistency detected:');
       debugPrint('   Original transactions: $totalOriginalCount');
-      debugPrint('   Merged transfers: ${processedData.mergedTransfers.length} (representing $mergedTransactionCount transactions)');
+      debugPrint(
+          '   Merged transfers: ${processedData.mergedTransfers.length} (representing $mergedTransactionCount transactions)');
       debugPrint('   Standalone transactions: $standaloneCount');
-      debugPrint('   Total display items: ${processedData.mergedTransfers.length + standaloneCount}');
-      debugPrint('   Expected total: $totalDisplayCount vs Actual: $totalOriginalCount');
+      debugPrint(
+          '   Total display items: ${processedData.mergedTransfers.length + standaloneCount}');
+      debugPrint(
+          '   Expected total: $totalDisplayCount vs Actual: $totalOriginalCount');
 
       // Identify problematic transactions
       final mergedTransactionIds = <String>{};
@@ -572,16 +633,19 @@ class _TxList extends StatelessWidget {
         mergedTransactionIds.add(mt.sourceTransaction.id);
         mergedTransactionIds.add(mt.destinationTransaction.id);
       }
-      final standaloneTransactionIds = processedData.standaloneTransactions.map((t) => t.id).toSet();
+      final standaloneTransactionIds =
+          processedData.standaloneTransactions.map((t) => t.id).toSet();
 
       for (final tx in transactions) {
         final inMerged = mergedTransactionIds.contains(tx.id);
         final inStandalone = standaloneTransactionIds.contains(tx.id);
 
         if (!inMerged && !inStandalone) {
-          debugPrint('   Missing transaction: ${tx.id} (${tx.type.name}, transferGroup: ${tx.transferGroupId})');
+          debugPrint(
+              '   Missing transaction: ${tx.id} (${tx.type.name}, transferGroup: ${tx.transferGroupId})');
         } else if (inMerged && inStandalone) {
-          debugPrint('   Duplicate transaction: ${tx.id} appears in both merged and standalone lists');
+          debugPrint(
+              '   Duplicate transaction: ${tx.id} appears in both merged and standalone lists');
         }
       }
     }
@@ -601,22 +665,36 @@ class _TxList extends StatelessWidget {
               return MergedTransferCard(
                 mergedTransfer: item,
                 onTap: () => _showMergedTransferDetail(context, item),
-                onSwipeUnmerge: (mergedTransfer) => _handleUnmergeTransfer(context, mergedTransfer),
-                onSwipeIgnore: (mergedTransfer) => _handleIgnoreTransfer(context, mergedTransfer),
+                onSwipeUnmerge: (mergedTransfer) =>
+                    _handleUnmergeTransfer(context, mergedTransfer),
+                onSwipeIgnore: (mergedTransfer) =>
+                    _handleIgnoreTransfer(context, mergedTransfer),
               );
             } else if (item is Transaction) {
               final tx = item;
+              final standardCategory = tx.effectiveStandardCategoryId != null
+                  ? standardCategoriesById[tx.effectiveStandardCategoryId!]
+                  : null;
+              final customCategory = tx.customCategoryId != null
+                  ? customCategoriesById[tx.customCategoryId!]
+                  : null;
               return TransactionCard(
                 tx: tx,
-                accountDisplayName: context.read<SmsService>().getAccountDisplayName(
-                    tx.accountId, tx.accountLast4),
+                accountDisplayName: context
+                    .read<SmsService>()
+                    .getAccountDisplayName(tx.accountId, tx.accountLast4),
+                standardCategoryLabel: standardCategory?.displayName,
+                standardCategoryColor: standardCategory?.color,
+                customCategoryLabel: customCategory?.name,
+                customCategoryColor: customCategory?.color,
                 onTap: () => TransactionDetailSheet.show(context, tx),
                 onSwipeIgnore: onSwipeIgnore,
                 onSwipeToggleType: onSwipeToggleType,
               );
             } else {
               // Fallback for unknown item type
-              debugPrint('⚠️  Unknown item type in display list at index $i: ${item.runtimeType}');
+              debugPrint(
+                  '⚠️  Unknown item type in display list at index $i: ${item.runtimeType}');
               return Container(
                 margin: const EdgeInsets.all(8),
                 padding: const EdgeInsets.all(16),
@@ -672,7 +750,8 @@ class _TxList extends StatelessWidget {
     final grouped = <String, List<dynamic>>{};
     for (final item in displayItems) {
       try {
-        final DateTime date = item is MergedTransfer ? item.date : (item as Transaction).date;
+        final DateTime date =
+            item is MergedTransfer ? item.date : (item as Transaction).date;
         final key = AppDateUtils.formatDateKey(date);
         grouped.putIfAbsent(key, () => []).add(item);
       } catch (e) {
@@ -724,21 +803,36 @@ class _TxList extends StatelessWidget {
                   return MergedTransferCard(
                     mergedTransfer: item,
                     onTap: () => _showMergedTransferDetail(context, item),
-                    onSwipeUnmerge: (mergedTransfer) => _handleUnmergeTransfer(context, mergedTransfer),
-                    onSwipeIgnore: (mergedTransfer) => _handleIgnoreTransfer(context, mergedTransfer),
+                    onSwipeUnmerge: (mergedTransfer) =>
+                        _handleUnmergeTransfer(context, mergedTransfer),
+                    onSwipeIgnore: (mergedTransfer) =>
+                        _handleIgnoreTransfer(context, mergedTransfer),
                   );
                 } else if (item is Transaction) {
                   final tx = item;
+                  final standardCategory = tx.effectiveStandardCategoryId !=
+                          null
+                      ? standardCategoriesById[tx.effectiveStandardCategoryId!]
+                      : null;
+                  final customCategory = tx.customCategoryId != null
+                      ? customCategoriesById[tx.customCategoryId!]
+                      : null;
                   return TransactionCard(
                     tx: tx,
-                    accountDisplayName: context.read<SmsService>().getAccountDisplayName(
-                        tx.accountId, tx.accountLast4),
+                    accountDisplayName: context
+                        .read<SmsService>()
+                        .getAccountDisplayName(tx.accountId, tx.accountLast4),
+                    standardCategoryLabel: standardCategory?.displayName,
+                    standardCategoryColor: standardCategory?.color,
+                    customCategoryLabel: customCategory?.name,
+                    customCategoryColor: customCategory?.color,
                     onTap: () => TransactionDetailSheet.show(context, tx),
                     onSwipeIgnore: onSwipeIgnore,
                     onSwipeToggleType: onSwipeToggleType,
                   );
                 } else {
-                  debugPrint('⚠️  Unknown item type in grouped display: ${item.runtimeType}');
+                  debugPrint(
+                      '⚠️  Unknown item type in grouped display: ${item.runtimeType}');
                   return Container(
                     margin: const EdgeInsets.all(8),
                     padding: const EdgeInsets.all(16),
@@ -793,16 +887,19 @@ class _TxList extends StatelessWidget {
     );
   }
 
-  void _showMergedTransferDetail(BuildContext context, MergedTransfer mergedTransfer) {
+  void _showMergedTransferDetail(
+      BuildContext context, MergedTransfer mergedTransfer) {
     try {
-      debugPrint('🔄 Opening merged transfer detail for group: ${mergedTransfer.transferGroupId}');
+      debugPrint(
+          '🔄 Opening merged transfer detail for group: ${mergedTransfer.transferGroupId}');
 
       // Show a custom detail sheet for merged transfers
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (context) => _MergedTransferDetailSheet(mergedTransfer: mergedTransfer),
+        builder: (context) =>
+            _MergedTransferDetailSheet(mergedTransfer: mergedTransfer),
       ).catchError((error) {
         if (!context.mounted) return;
         debugPrint('❌ Error showing merged transfer detail sheet: $error');
@@ -816,7 +913,8 @@ class _TxList extends StatelessWidget {
     }
   }
 
-  void _showSimpleMergedTransferDialog(BuildContext context, MergedTransfer mergedTransfer) {
+  void _showSimpleMergedTransferDialog(
+      BuildContext context, MergedTransfer mergedTransfer) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -856,7 +954,8 @@ class _TxList extends StatelessWidget {
             onPressed: () async {
               try {
                 Navigator.of(context).pop();
-                await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
+                await TransferService.unmergeTransfer(
+                    mergedTransfer.sourceTransaction);
                 if (context.mounted) {
                   context.read<SmsService>().reloadFromCache();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -888,7 +987,8 @@ class _TxList extends StatelessWidget {
     );
   }
 
-  Future<void> _handleUnmergeTransfer(BuildContext context, MergedTransfer mergedTransfer) async {
+  Future<void> _handleUnmergeTransfer(
+      BuildContext context, MergedTransfer mergedTransfer) async {
     try {
       // Unmerge the transfer
       await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
@@ -914,14 +1014,18 @@ class _TxList extends StatelessWidget {
     }
   }
 
-  Future<void> _handleIgnoreTransfer(BuildContext context, MergedTransfer mergedTransfer) async {
+  Future<void> _handleIgnoreTransfer(
+      BuildContext context, MergedTransfer mergedTransfer) async {
     try {
       // Ignore both transactions in the transfer atomically
-      final updatedSource = mergedTransfer.sourceTransaction.copyWith(isIgnored: true);
-      final updatedDestination = mergedTransfer.destinationTransaction.copyWith(isIgnored: true);
+      final updatedSource =
+          mergedTransfer.sourceTransaction.copyWith(isIgnored: true);
+      final updatedDestination =
+          mergedTransfer.destinationTransaction.copyWith(isIgnored: true);
 
       // Use atomic update to ensure both transactions are updated together
-      await LocalStorageService.updateTransactionsAtomic([updatedSource, updatedDestination]);
+      await LocalStorageService.updateTransactionsAtomic(
+          [updatedSource, updatedDestination]);
 
       if (context.mounted) {
         context.read<SmsService>().reloadFromCache();
@@ -981,7 +1085,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                 height: 4,
                 width: 40,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  color:
+                      theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -994,7 +1099,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                     // Title
                     Row(
                       children: [
-                        const Icon(Icons.swap_horiz_rounded, color: transferColor, size: 28),
+                        const Icon(Icons.swap_horiz_rounded,
+                            color: transferColor, size: 28),
                         const SizedBox(width: 12),
                         Text(
                           'Transfer Details',
@@ -1020,7 +1126,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: transferColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(20),
@@ -1076,10 +1183,12 @@ class _MergedTransferDetailSheet extends StatelessWidget {
 
   bool _hasDebugInfo(MergedTransfer mergedTransfer) {
     // Show debug info if there are potential data integrity issues
-    return mergedTransfer.sourceTransaction.transferPartnerId != mergedTransfer.destinationTransaction.id ||
-           mergedTransfer.destinationTransaction.transferPartnerId != mergedTransfer.sourceTransaction.id ||
-           !mergedTransfer.sourceTransaction.isTransferSource ||
-           !mergedTransfer.destinationTransaction.isTransferDestination;
+    return mergedTransfer.sourceTransaction.transferPartnerId !=
+            mergedTransfer.destinationTransaction.id ||
+        mergedTransfer.destinationTransaction.transferPartnerId !=
+            mergedTransfer.sourceTransaction.id ||
+        !mergedTransfer.sourceTransaction.isTransferSource ||
+        !mergedTransfer.destinationTransaction.isTransferDestination;
   }
 
   Widget _buildDebugInfo(BuildContext context, MergedTransfer mergedTransfer) {
@@ -1130,12 +1239,14 @@ class _MergedTransferDetailSheet extends StatelessWidget {
               fontSize: 10,
             ),
           ),
-          if (mergedTransfer.sourceTransaction.transferPartnerId != mergedTransfer.destinationTransaction.id)
+          if (mergedTransfer.sourceTransaction.transferPartnerId !=
+              mergedTransfer.destinationTransaction.id)
             const Text(
               '⚠️ Source partner ID mismatch',
               style: TextStyle(color: Colors.red, fontSize: 10),
             ),
-          if (mergedTransfer.destinationTransaction.transferPartnerId != mergedTransfer.sourceTransaction.id)
+          if (mergedTransfer.destinationTransaction.transferPartnerId !=
+              mergedTransfer.sourceTransaction.id)
             const Text(
               '⚠️ Destination partner ID mismatch',
               style: TextStyle(color: Colors.red, fontSize: 10),
@@ -1211,7 +1322,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildTransactionDetails(BuildContext context, String title, Transaction transaction) {
+  Widget _buildTransactionDetails(
+      BuildContext context, String title, Transaction transaction) {
     final theme = Theme.of(context);
 
     return Card(
@@ -1227,12 +1339,14 @@ class _MergedTransferDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _buildDetailRow('Date', FormatUtils.formatDateTime(transaction.date)),
+            _buildDetailRow(
+                'Date', FormatUtils.formatDateTime(transaction.date)),
             if (transaction.referenceId != null)
               _buildDetailRow('Reference ID', transaction.referenceId!),
             _buildDetailRow('Payment Method', transaction.sourceLabel),
             if (transaction.balance != null)
-              _buildDetailRow('Balance', FormatUtils.formatCurrency(transaction.balance!)),
+              _buildDetailRow(
+                  'Balance', FormatUtils.formatCurrency(transaction.balance!)),
             if (transaction.note != null && transaction.note!.isNotEmpty)
               _buildDetailRow('Note', transaction.note!),
           ],
@@ -1282,7 +1396,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () async {
                   try {
-                    await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
+                    await TransferService.unmergeTransfer(
+                        mergedTransfer.sourceTransaction);
                     if (context.mounted) {
                       Navigator.of(context).pop();
                       context.read<SmsService>().reloadFromCache();
@@ -1324,7 +1439,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
           children: [
             Expanded(
               child: TextButton.icon(
-                onPressed: () => _showTransaction(context, mergedTransfer.sourceTransaction, 'From Account'),
+                onPressed: () => _showTransaction(
+                    context, mergedTransfer.sourceTransaction, 'From Account'),
                 icon: const Icon(Icons.arrow_upward, size: 16),
                 label: const Text('View From', style: TextStyle(fontSize: 12)),
               ),
@@ -1332,7 +1448,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: TextButton.icon(
-                onPressed: () => _showTransaction(context, mergedTransfer.destinationTransaction, 'To Account'),
+                onPressed: () => _showTransaction(context,
+                    mergedTransfer.destinationTransaction, 'To Account'),
                 icon: const Icon(Icons.arrow_downward, size: 16),
                 label: const Text('View To', style: TextStyle(fontSize: 12)),
               ),
@@ -1343,7 +1460,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
     );
   }
 
-  void _showTransaction(BuildContext context, Transaction transaction, String title) {
+  void _showTransaction(
+      BuildContext context, Transaction transaction, String title) {
     try {
       // Close current modal first
       Navigator.of(context).pop();
@@ -1376,7 +1494,8 @@ class _MergedTransferDetailSheet extends StatelessWidget {
               ],
               if (transaction.balance != null) ...[
                 const SizedBox(height: 8),
-                Text('Balance: ${FormatUtils.formatCurrency(transaction.balance!)}'),
+                Text(
+                    'Balance: ${FormatUtils.formatCurrency(transaction.balance!)}'),
               ],
               const SizedBox(height: 16),
               Text(
@@ -1398,7 +1517,6 @@ class _MergedTransferDetailSheet extends StatelessWidget {
       );
     }
   }
-
 }
 
 /// Helper class to store processed transaction data
