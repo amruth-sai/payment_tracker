@@ -320,10 +320,14 @@ class SmsService extends ChangeNotifier {
 
         if (tx != null) {
           // Auto-categorize the transaction
-          final category = CategoryService.categorize(tx);
+          final standardCategoryId =
+              CategoryService.categorizeStandardCategoryId(tx);
+          final category =
+              TransactionCategory.fromStandardCategoryId(standardCategoryId);
           final categorizedTx = tx.copyWith(
             category: category,
-            standardCategoryId: category.standardCategoryId,
+            standardCategoryId: standardCategoryId,
+            clearCategory: category == null,
           );
           newTransactions.add(categorizedTx);
           // Save transaction to cache

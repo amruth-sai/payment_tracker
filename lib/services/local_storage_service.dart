@@ -121,10 +121,48 @@ class LocalStorageService {
     }
   }
 
+  static Future<void> _syncAirtelBankTransactions(Database db) async {
+    const standardCategoryId = 'daily_transactions';
+    const whereClause = '''
+      LOWER(COALESCE(sender, '')) LIKE ? OR
+      LOWER(COALESCE(merchant, '')) LIKE ? OR
+      LOWER(COALESCE(raw_message, '')) LIKE ? OR
+      LOWER(COALESCE(sender, '')) LIKE ? OR
+      LOWER(COALESCE(raw_message, '')) LIKE ? OR
+      LOWER(COALESCE(sender, '')) LIKE ? OR
+      LOWER(COALESCE(raw_message, '')) LIKE ? OR
+      LOWER(COALESCE(sender, '')) LIKE ? OR
+      LOWER(COALESCE(raw_message, '')) LIKE ?
+    ''';
+
+    const whereArgs = [
+      '%airtel payments bank%',
+      '%airtel payments bank%',
+      '%airtel payments bank%',
+      '%atbank%',
+      '%atbank%',
+      '%airbnk%',
+      '%airbnk%',
+      '%airbks%',
+      '%airbks%',
+    ];
+
+    await db.update(
+      'transactions',
+      {
+        'standard_category_id': standardCategoryId,
+        'category': null,
+      },
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
+  }
+
   static Future<void> _syncStandardCategoryCatalog(Database db) async {
     await _migrateLegacyStandardCategoryIds(db);
     await _seedDefaultStandardCategories(db);
     await _migrateCategoryPreferences(db);
+    await _syncAirtelBankTransactions(db);
   }
 
   /// Initialize the database
