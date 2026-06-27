@@ -153,7 +153,7 @@ class LocalStorageService {
         'standard_category_id': standardCategoryId,
         'category': null,
       },
-      where: whereClause,
+      where: '($whereClause) AND COALESCE(is_user_corrected, 0) = 0',
       whereArgs: whereArgs,
     );
   }
@@ -1669,6 +1669,7 @@ class LocalStorageService {
       {
         'category': category.name,
         'standard_category_id': category.standardCategoryId,
+        'is_user_corrected': 1,
       },
       where: 'id = ?',
       whereArgs: [txId],
@@ -1874,6 +1875,7 @@ class LocalStorageService {
         'standard_category_id': standardCategoryId,
         'category':
             _legacyCategoryNameForStandardCategoryId(standardCategoryId),
+        'is_user_corrected': 1,
       },
       where: 'id = ?',
       whereArgs: [txId],
