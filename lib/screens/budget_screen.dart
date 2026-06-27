@@ -3,11 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/budget.dart';
+import '../models/salary_cycle.dart';
 import '../models/standard_category.dart';
 import '../models/transaction.dart';
 import '../services/budget_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
+import '../utils/date_utils.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
 
@@ -24,6 +26,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
   bool _isLoading = true;
   double _monthlyIncome = 0;
   SmsService? _smsService;
+  List<_BudgetPeriod> _periods = [];
+  _BudgetPeriod? _selectedPeriod;
+  bool _periodsLoaded = false;
+  bool _hasSalaryCycles = false;
 
   @override
   void initState() {
@@ -50,7 +56,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   void _handleTransactionsChanged() {
     if (!mounted) return;
-    _refreshStatuses(useProviderTransactions: true);
+    _refreshStatuses(
+      useProviderTransactions: true,
+      refreshPeriods: !_hasSalaryCycles,
+    );
   }
 
   Future<void> _loadData() async {
@@ -64,19 +73,33 @@ class _BudgetScreenState extends State<BudgetScreen> {
     _monthlyIncome = double.tryParse(incomeStr ?? '') ?? 0;
     _standardCategories = categories;
 
-    await _refreshStatuses(useProviderTransactions: true);
+    await _refreshStatuses(
+      useProviderTransactions: true,
+      refreshPeriods: true,
+    );
   }
 
-  Future<void> _refreshStatuses({required bool useProviderTransactions}) async {
+  Future<void> _refreshStatuses({
+    required bool useProviderTransactions,
+    bool refreshPeriods = false,
+  }) async {
     final providerTransactions = useProviderTransactions
         ? (_smsService?.transactions ?? const <Transaction>[])
         : const <Transaction>[];
-    final fallbackTransactions = providerTransactions.isNotEmpty
+    final baseTransactions = providerTransactions.isNotEmpty
         ? providerTransactions
         : await LocalStorageService.getTrackedTransactions();
 
-    final statuses =
-        await BudgetService.checkBudgets(transactions: fallbackTransactions);
+    if (refreshPeriods || !_periodsLoaded) {
+      await _loadPeriods(baseTransactions: baseTransactions);
+    }
+
+    final activePeriod = _activePeriod;
+    final statuses = await BudgetService.checkBudgets(
+      transactions: baseTransactions,
+      start: activePeriod.start,
+      end: activePeriod.end,
+    );
 
     if (!mounted) return;
     setState(() {
@@ -121,6 +144,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 padding: const EdgeInsets.only(bottom: 80),
                 children: [
                   _buildIncomeCard(),
+                  if (_periodsLoaded && _periods.length > 1)
+                    _buildPeriodChips(),
                   if (_statuses.isEmpty)
                     _buildEmptyState()
                   else
@@ -181,6 +206,153 @@ class _BudgetScreenState extends State<BudgetScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPeriodChips() {
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: _periods
+            .map(
+              (period) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  avatar: period.isCurrent
+                      ? const Icon(Icons.circle, size: 8, color: Colors.green)
+                      : null,
+                  label: Text(period.label,
+                      style: const TextStyle(fontSize: 12)),
+                  selected: _selectedPeriod?.id == period.id,
+                  onSelected: (_) => _selectPeriod(period),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  void _selectPeriod(_BudgetPeriod period) {
+    if (_selectedPeriod?.id == period.id) return;
+    setState(() => _selectedPeriod = period);
+    _refreshStatuses(useProviderTransactions: true);
+  }
+
+  Future<void> _loadPeriods({List<Transaction>? baseTransactions}) async {
+    final cycles = await LocalStorageService.getAllSalaryCycles();
+    _hasSalaryCycles = cycles.isNotEmpty;
+
+    if (_hasSalaryCycles) {
+      _periods = cycles.map(_periodFromSalaryCycle).toList();
+    } else {
+      final transactions = baseTransactions ??
+          await LocalStorageService.getTrackedTransactions();
+      _periods = _buildMonthlyPeriods(transactions);
+    }
+
+    _selectedPeriod = _resolveSelectedPeriod(_periods, _selectedPeriod);
+    _periodsLoaded = true;
+  }
+
+  _BudgetPeriod? _resolveSelectedPeriod(
+    List<_BudgetPeriod> periods,
+    _BudgetPeriod? current,
+  ) {
+    if (periods.isEmpty) return null;
+
+    final currentId = current?.id;
+    if (currentId != null) {
+      for (final period in periods) {
+        if (period.id == currentId) return period;
+      }
+    }
+
+    for (final period in periods) {
+      if (period.isCurrent) return period;
+    }
+
+    return periods.first;
+  }
+
+  List<_BudgetPeriod> _buildMonthlyPeriods(List<Transaction> transactions) {
+    final now = DateTime.now();
+    final monthStarts = <String, DateTime>{};
+
+    final currentStart = DateTime(now.year, now.month, 1);
+    monthStarts[_monthKey(currentStart)] = currentStart;
+
+    for (final tx in transactions) {
+      final start = DateTime(tx.date.year, tx.date.month, 1);
+      monthStarts[_monthKey(start)] = start;
+    }
+
+    final starts = monthStarts.values.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    return starts
+        .map(
+          (start) => _BudgetPeriod(
+            id: 'month_${_monthKey(start)}',
+            label: _monthLabel(start),
+            start: start,
+            end: _endOfMonth(start),
+            isCurrent: start.year == now.year && start.month == now.month,
+            rangeLabel: _formatRange(start, _endOfMonth(start)),
+          ),
+        )
+        .toList();
+  }
+
+  _BudgetPeriod _periodFromSalaryCycle(SalaryCycle cycle) {
+    final end = cycle.endDate ?? DateTime.now();
+    return _BudgetPeriod(
+      id: 'cycle_${cycle.id}',
+      label: cycle.cycleLabel,
+      start: cycle.startDate,
+      end: end,
+      isCurrent: cycle.isCurrent,
+      rangeLabel: _formatRange(cycle.startDate, end),
+    );
+  }
+
+  _BudgetPeriod get _activePeriod => _selectedPeriod ??
+      (_periods.isNotEmpty ? _periods.first : _fallbackMonthlyPeriod());
+
+  _BudgetPeriod _fallbackMonthlyPeriod() {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, 1);
+    return _BudgetPeriod(
+      id: 'month_${_monthKey(start)}',
+      label: _monthLabel(start),
+      start: start,
+      end: now,
+      isCurrent: true,
+      rangeLabel: _formatRange(start, now),
+    );
+  }
+
+  String _monthLabel(DateTime start) {
+    final month = AppDateUtils.months[start.month - 1];
+    return '$month ${start.year}';
+  }
+
+  String _monthKey(DateTime start) {
+    return '${start.year}_${start.month.toString().padLeft(2, '0')}';
+  }
+
+  DateTime _endOfMonth(DateTime start) {
+    final nextMonth = DateTime(start.year, start.month + 1, 1);
+    return nextMonth.subtract(const Duration(milliseconds: 1));
+  }
+
+  String _formatRange(DateTime start, DateTime end) {
+    final startLabel =
+        '${start.day} ${AppDateUtils.months[start.month - 1]}';
+    final endLabel =
+        '${end.day} ${AppDateUtils.months[end.month - 1]} ${end.year}';
+    return '$startLabel - $endLabel';
   }
 
   Widget _buildEmptyState() {
@@ -318,11 +490,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _showCategoryTransactions(BudgetStatus status) async {
+    final period = _activePeriod;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _BudgetCategoryTransactionsSheet(status: status),
+      builder: (_) =>
+          _BudgetCategoryTransactionsSheet(status: status, period: period),
     );
   }
 
@@ -560,10 +734,32 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 }
 
+class _BudgetPeriod {
+  final String id;
+  final String label;
+  final DateTime start;
+  final DateTime end;
+  final bool isCurrent;
+  final String rangeLabel;
+
+  const _BudgetPeriod({
+    required this.id,
+    required this.label,
+    required this.start,
+    required this.end,
+    required this.isCurrent,
+    required this.rangeLabel,
+  });
+}
+
 class _BudgetCategoryTransactionsSheet extends StatefulWidget {
   final BudgetStatus status;
+  final _BudgetPeriod period;
 
-  const _BudgetCategoryTransactionsSheet({required this.status});
+  const _BudgetCategoryTransactionsSheet({
+    required this.status,
+    required this.period,
+  });
 
   @override
   State<_BudgetCategoryTransactionsSheet> createState() =>
@@ -628,9 +824,10 @@ class _BudgetCategoryTransactionsSheetState
 
   List<Transaction> _filterIncludedTransactions(
       List<Transaction> transactions) {
-    final now = DateTime.now();
+    final start = widget.period.start;
+    final end = widget.period.end;
     return transactions
-        .where((tx) => tx.date.year == now.year && tx.date.month == now.month)
+        .where((tx) => !tx.date.isBefore(start) && !tx.date.isAfter(end))
         .where((tx) => tx.isDebit)
         .where((tx) {
       final categoryId = tx.effectiveStandardCategoryId ??
@@ -696,11 +893,18 @@ class _BudgetCategoryTransactionsSheetState
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Transactions counted in this month\'s budget',
+                          'Transactions counted in ${widget.period.label} budget',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
+                        if (widget.period.rangeLabel.isNotEmpty)
+                          Text(
+                            widget.period.rangeLabel,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -767,7 +971,7 @@ class _BudgetCategoryTransactionsSheetState
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  'No transactions counted for this category this month.',
+                                  'No transactions counted for this category in this period.',
                                   textAlign: TextAlign.center,
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,

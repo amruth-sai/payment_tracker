@@ -30,14 +30,15 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _search = '';
-  String? _selectedBank;
-  String? _selectedStandardCategoryId;
+  final Set<String> _selectedBanks = {};
+  final Set<String> _selectedStandardCategoryIds = {};
+  final Set<String> _selectedCustomCategoryIds = {};
+  final Set<String> _selectedTags = {};
   SortOrder _sortOrder = SortOrder.none;
   List<SalaryCycle> _salaryCycles = [];
   SalaryCycle? _selectedCycle;
   bool _cyclesLoaded = false;
   List<CustomCategory> _customCategories = [];
-  CustomCategory? _selectedCustomCategory;
   bool _customCategoriesLoaded = false;
   List<StandardCategory> _standardCategories = [];
   bool _standardCategoriesLoaded = false;
@@ -50,9 +51,16 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
       vsync: this,
       initialIndex: widget.filter,
     );
+    _tabController.addListener(_handleTabChanged);
     _loadSalaryCycles();
     _loadCustomCategories();
     _loadStandardCategories();
+  }
+
+  void _handleTabChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadSalaryCycles() async {
@@ -94,6 +102,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -162,9 +171,31 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
       ),
       body: Consumer<SmsService>(
         builder: (context, sms, _) {
-          final allTxs = sms.transactions;
-          final banks = _getUniqueBanks(allTxs);
-          final standardCategories = _getUniqueStandardCategories(allTxs);
+          final currentTabTransactions = _getTabTransactions(sms);
+          final banks = _getUniqueBanks(
+            _filterTransactions(
+              currentTabTransactions,
+              includeBanks: false,
+            ),
+          );
+          final standardCategories = _getUniqueStandardCategories(
+            _filterTransactions(
+              currentTabTransactions,
+              includeStandardCategories: false,
+            ),
+          );
+          final customCategories = _getUniqueCustomCategories(
+            _filterTransactions(
+              currentTabTransactions,
+              includeCustomCategories: false,
+            ),
+          );
+          final tags = _getUniqueTags(
+            _filterTransactions(
+              currentTabTransactions,
+              includeTags: false,
+            ),
+          );
           final standardCategoriesById = _buildStandardCategoryMap();
           final customCategoriesById = {
             for (final category in _customCategories) category.id: category,
@@ -183,7 +214,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
               ),
 
               // Bank filter chips
-              if (banks.length > 1)
+              if (banks.isNotEmpty || _selectedBanks.isNotEmpty)
                 SizedBox(
                   height: 42,
                   child: ListView(
@@ -195,9 +226,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         child: FilterChip(
                           avatar: const Icon(Icons.account_balance, size: 16),
                           label: const Text('All Banks'),
-                          selected: _selectedBank == null,
-                          onSelected: (_) =>
-                              setState(() => _selectedBank = null),
+                          selected: _selectedBanks.isEmpty,
+                          onSelected: (_) => setState(_selectedBanks.clear),
                         ),
                       ),
                       ...banks.map((bank) => Padding(
@@ -205,10 +235,11 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                             child: FilterChip(
                               label: Text(bank,
                                   style: const TextStyle(fontSize: 12)),
-                              selected: _selectedBank == bank,
+                              selected: _selectedBanks.contains(bank),
                               onSelected: (_) => setState(() {
-                                _selectedBank =
-                                    _selectedBank == bank ? null : bank;
+                                if (!_selectedBanks.add(bank)) {
+                                  _selectedBanks.remove(bank);
+                                }
                               }),
                             ),
                           )),
@@ -217,7 +248,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                 ),
 
               // Category filter chips
-              if (standardCategories.length > 1)
+              if (standardCategories.isNotEmpty ||
+                  _selectedStandardCategoryIds.isNotEmpty)
                 SizedBox(
                   height: 42,
                   child: ListView(
@@ -229,9 +261,9 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         child: FilterChip(
                           avatar: const Icon(Icons.category_outlined, size: 16),
                           label: const Text('All Categories'),
-                          selected: _selectedStandardCategoryId == null,
-                          onSelected: (_) => setState(
-                              () => _selectedStandardCategoryId = null),
+                          selected: _selectedStandardCategoryIds.isEmpty,
+                          onSelected: (_) =>
+                              setState(_selectedStandardCategoryIds.clear),
                         ),
                       ),
                       ...standardCategories.map((cat) => Padding(
@@ -241,12 +273,12 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                                   style: const TextStyle(fontSize: 14)),
                               label: Text(cat.displayName,
                                   style: const TextStyle(fontSize: 12)),
-                              selected: _selectedStandardCategoryId == cat.id,
+                              selected:
+                                  _selectedStandardCategoryIds.contains(cat.id),
                               onSelected: (_) => setState(() {
-                                _selectedStandardCategoryId =
-                                    _selectedStandardCategoryId == cat.id
-                                        ? null
-                                        : cat.id;
+                                if (!_selectedStandardCategoryIds.add(cat.id)) {
+                                  _selectedStandardCategoryIds.remove(cat.id);
+                                }
                               }),
                             ),
                           )),
@@ -255,7 +287,9 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                 ),
 
               // My Categories (Custom labels) filter chips
-              if (_customCategoriesLoaded && _customCategories.isNotEmpty)
+              if (_customCategoriesLoaded &&
+                  (customCategories.isNotEmpty ||
+                      _selectedCustomCategoryIds.isNotEmpty))
                 SizedBox(
                   height: 42,
                   child: ListView(
@@ -267,24 +301,60 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         child: FilterChip(
                           avatar: const Icon(Icons.label_outline, size: 16),
                           label: const Text('All Labels'),
-                          selected: _selectedCustomCategory == null,
+                          selected: _selectedCustomCategoryIds.isEmpty,
                           onSelected: (_) =>
-                              setState(() => _selectedCustomCategory = null),
+                              setState(_selectedCustomCategoryIds.clear),
                         ),
                       ),
-                      ..._customCategories.map((cat) => Padding(
+                      ...customCategories.map((cat) => Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: FilterChip(
                               avatar: Text(cat.emoji,
                                   style: const TextStyle(fontSize: 14)),
                               label: Text(cat.name,
                                   style: const TextStyle(fontSize: 12)),
-                              selected: _selectedCustomCategory == cat,
+                              selected:
+                                  _selectedCustomCategoryIds.contains(cat.id),
                               backgroundColor: cat.color.withValues(alpha: 0.1),
                               selectedColor: cat.color.withValues(alpha: 0.25),
                               onSelected: (_) => setState(() {
-                                _selectedCustomCategory =
-                                    _selectedCustomCategory == cat ? null : cat;
+                                if (!_selectedCustomCategoryIds.add(cat.id)) {
+                                  _selectedCustomCategoryIds.remove(cat.id);
+                                }
+                              }),
+                            ),
+                          )),
+                    ],
+                  ),
+                ),
+
+              // Tag filter chips
+              if (tags.isNotEmpty || _selectedTags.isNotEmpty)
+                SizedBox(
+                  height: 42,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          avatar: const Icon(Icons.sell_outlined, size: 16),
+                          label: const Text('All Tags'),
+                          selected: _selectedTags.isEmpty,
+                          onSelected: (_) => setState(_selectedTags.clear),
+                        ),
+                      ),
+                      ...tags.map((tag) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(tag,
+                                  style: const TextStyle(fontSize: 12)),
+                              selected: _selectedTags.contains(tag),
+                              onSelected: (_) => setState(() {
+                                if (!_selectedTags.add(tag)) {
+                                  _selectedTags.remove(tag);
+                                }
                               }),
                             ),
                           )),
@@ -336,7 +406,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                   controller: _tabController,
                   children: [
                     _TxList(
-                        transactions: _filter(sms.transactions),
+                        transactions: _filterTransactions(sms.transactions),
                         search: _search,
                         sortOrder: _sortOrder,
                         standardCategoriesById: standardCategoriesById,
@@ -345,7 +415,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         onSwipeToggleType: (tx) =>
                             _handleSwipeToggleType(context, tx)),
                     _TxList(
-                        transactions: _filter(sms.credits),
+                        transactions: _filterTransactions(sms.credits),
                         search: _search,
                         sortOrder: _sortOrder,
                         standardCategoriesById: standardCategoriesById,
@@ -354,7 +424,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                         onSwipeToggleType: (tx) =>
                             _handleSwipeToggleType(context, tx)),
                     _TxList(
-                        transactions: _filter(sms.debits),
+                        transactions: _filterTransactions(sms.debits),
                         search: _search,
                         sortOrder: _sortOrder,
                         standardCategoriesById: standardCategoriesById,
@@ -372,7 +442,13 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     );
   }
 
-  List<Transaction> _filter(List<Transaction> list) {
+  List<Transaction> _filterTransactions(
+    List<Transaction> list, {
+    bool includeBanks = true,
+    bool includeStandardCategories = true,
+    bool includeCustomCategories = true,
+    bool includeTags = true,
+  }) {
     var result = list;
 
     // Salary cycle filter
@@ -394,22 +470,32 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     }
 
     // Bank filter
-    if (_selectedBank != null) {
-      result = result.where((t) => t.sender == _selectedBank).toList();
+    if (includeBanks && _selectedBanks.isNotEmpty) {
+      result = result.where((t) => _selectedBanks.contains(t.sender)).toList();
     }
 
     // Category filter
-    if (_selectedStandardCategoryId != null) {
+    if (includeStandardCategories && _selectedStandardCategoryIds.isNotEmpty) {
       result = result
           .where((t) =>
-              t.effectiveStandardCategoryId == _selectedStandardCategoryId)
+              t.effectiveStandardCategoryId != null &&
+              _selectedStandardCategoryIds.contains(t.effectiveStandardCategoryId))
           .toList();
     }
 
     // Custom category (My Categories) filter
-    if (_selectedCustomCategory != null) {
+    if (includeCustomCategories && _selectedCustomCategoryIds.isNotEmpty) {
       result = result
-          .where((t) => t.customCategoryId == _selectedCustomCategory!.id)
+          .where((t) =>
+              t.customCategoryId != null &&
+              _selectedCustomCategoryIds.contains(t.customCategoryId))
+          .toList();
+    }
+
+    // Tag filter
+    if (includeTags && _selectedTags.isNotEmpty) {
+      result = result
+          .where((t) => t.tag != null && _selectedTags.contains(t.tag))
           .toList();
     }
 
@@ -421,6 +507,17 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     }
 
     return result;
+  }
+
+  List<Transaction> _getTabTransactions(SmsService sms) {
+    switch (_tabController.index) {
+      case 1:
+        return sms.credits;
+      case 2:
+        return sms.debits;
+      default:
+        return sms.transactions;
+    }
   }
 
   List<String> _getUniqueBanks(List<Transaction> txs) {
@@ -463,6 +560,38 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     }
     final sorted = cats.toList()
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    return sorted;
+  }
+
+  List<CustomCategory> _getUniqueCustomCategories(List<Transaction> txs) {
+    final categoriesById = {
+      for (final category in _customCategories) category.id: category,
+    };
+    final cats = <CustomCategory>{};
+    for (final tx in txs) {
+      final customCategoryId = tx.customCategoryId;
+      if (customCategoryId == null) continue;
+
+      final category = categoriesById[customCategoryId];
+      if (category != null) {
+        cats.add(category);
+      }
+    }
+    final sorted = cats.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return sorted;
+  }
+
+  List<String> _getUniqueTags(List<Transaction> txs) {
+    final tags = <String>{};
+    for (final tx in txs) {
+      final tag = tx.tag?.trim();
+      if (tag != null && tag.isNotEmpty) {
+        tags.add(tag);
+      }
+    }
+    final sorted = tags.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return sorted;
   }
 

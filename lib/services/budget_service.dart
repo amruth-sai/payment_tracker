@@ -75,12 +75,20 @@ class BudgetService {
 
   static Future<List<BudgetStatus>> checkBudgets({
     List<Transaction>? transactions,
+    DateTime? start,
+    DateTime? end,
   }) async {
     final budgets = await LocalStorageService.getAllBudgets();
     if (budgets.isEmpty) return [];
 
-    final currentTransactions = _filterToCurrentMonth(
-        transactions ?? await _loadCurrentMonthTransactions());
+    final effectiveEnd = end ?? (start != null ? DateTime.now() : null);
+    final baseTransactions = transactions ??
+        await _loadTransactionsForRange(start: start, end: effectiveEnd);
+    final currentTransactions = _filterToRange(
+      baseTransactions,
+      start: start,
+      end: effectiveEnd,
+    );
     final categoriesById = await _loadStandardCategoryMap();
 
     final categorySpent = <String, double>{};
@@ -113,13 +121,40 @@ class BudgetService {
     return result;
   }
 
-  static Future<List<Transaction>> _loadCurrentMonthTransactions() async {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
+  static Future<List<Transaction>> _loadTransactionsForRange({
+    DateTime? start,
+    DateTime? end,
+  }) async {
+    if (start == null && end == null) {
+      final now = DateTime.now();
+      final monthStart = DateTime(now.year, now.month, 1);
+      return LocalStorageService.getTrackedTransactions(
+        start: monthStart,
+        end: now,
+      );
+    }
+
+    final effectiveEnd = end ?? DateTime.now();
     return LocalStorageService.getTrackedTransactions(
-      start: monthStart,
-      end: now,
+      start: start,
+      end: effectiveEnd,
     );
+  }
+
+  static List<Transaction> _filterToRange(
+    List<Transaction> transactions, {
+    DateTime? start,
+    DateTime? end,
+  }) {
+    if (start == null && end == null) {
+      return _filterToCurrentMonth(transactions);
+    }
+
+    final effectiveEnd = end ?? DateTime.now();
+    return transactions
+        .where((tx) => start == null || !tx.date.isBefore(start))
+        .where((tx) => !tx.date.isAfter(effectiveEnd))
+        .toList();
   }
 
   static List<Transaction> _filterToCurrentMonth(
@@ -132,8 +167,14 @@ class BudgetService {
 
   static Future<List<BudgetStatus>> getOverBudgetAlerts({
     List<Transaction>? transactions,
+    DateTime? start,
+    DateTime? end,
   }) async {
-    final statuses = await checkBudgets(transactions: transactions);
+    final statuses = await checkBudgets(
+      transactions: transactions,
+      start: start,
+      end: end,
+    );
     return statuses.where((status) => status.percentage >= 80).toList()
       ..sort((a, b) => b.percentage.compareTo(a.percentage));
   }
