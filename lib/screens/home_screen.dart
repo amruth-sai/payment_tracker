@@ -24,6 +24,7 @@ import 'alerts_screen.dart';
 import 'custom_categories_screen.dart';
 import 'tracking_settings_screen.dart';
 import 'transfer_management_screen.dart';
+import 'ignored_transactions_screen.dart';
 import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -421,7 +422,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(child: SizedBox()), // spacer
+              _QuickActionButton(
+                icon: Icons.visibility_off_outlined,
+                label: 'Ignored',
+                color: Colors.orange,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const IgnoredTransactionsScreen()),
+                ),
+              ),
               const SizedBox(width: 8),
               const Expanded(child: SizedBox()), // spacer
             ],
