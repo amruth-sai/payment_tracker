@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
-import '../services/ai_sms_parser.dart';
+import 'ai_finance_assistant_screen.dart';
 import '../models/transaction.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/summary_card.dart';
@@ -199,32 +199,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return SliverAppBar(
       floating: true,
       snap: true,
-      title: Row(
-        children: [
-          const Text(
-            'Payment Tracker',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          if (AiSmsParser.isInitialized) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.auto_awesome, size: 12, color: Colors.amber),
-                  SizedBox(width: 2),
-                  Text('AI',
-                      style: TextStyle(fontSize: 10, color: Colors.amber)),
-                ],
-              ),
-            ),
-          ],
-        ],
+      title: const Text(
+        'Payment Tracker',
+        style: TextStyle(fontWeight: FontWeight.w800),
       ),
       actions: [
         IconButton(
@@ -265,30 +242,64 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
           ],
         ),
-        IconButton(
-          icon: const Icon(Icons.swap_horiz_rounded),
-          tooltip: 'Transfer Management',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const TransferManagementScreen()),
-            );
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-            // Reload with potentially new AI settings
-            if (context.mounted) {
-              context.read<SmsService>().loadTransactions();
+        PopupMenuButton<_HomeMenuAction>(
+          tooltip: 'More actions',
+          onSelected: (action) async {
+            switch (action) {
+              case _HomeMenuAction.financeAssistant:
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FinanceAssistantScreen(),
+                  ),
+                );
+                break;
+              case _HomeMenuAction.transferManagement:
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TransferManagementScreen(),
+                  ),
+                );
+                break;
+              case _HomeMenuAction.settings:
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+                if (context.mounted) {
+                  context.read<SmsService>().loadTransactions();
+                }
+                break;
             }
           },
+          itemBuilder: (_) => const [
+            PopupMenuItem<_HomeMenuAction>(
+              value: _HomeMenuAction.financeAssistant,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.auto_awesome_outlined),
+                title: Text('Finance Assistant'),
+              ),
+            ),
+            PopupMenuItem<_HomeMenuAction>(
+              value: _HomeMenuAction.transferManagement,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.swap_horiz_rounded),
+                title: Text('Transfer Management'),
+              ),
+            ),
+            PopupMenuItem<_HomeMenuAction>(
+              value: _HomeMenuAction.settings,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.settings_outlined),
+                title: Text('Settings'),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 4),
       ],
     );
   }
@@ -668,6 +679,12 @@ class _ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _HomeMenuAction {
+  financeAssistant,
+  transferManagement,
+  settings,
 }
 
 class _QuickActionButton extends StatelessWidget {

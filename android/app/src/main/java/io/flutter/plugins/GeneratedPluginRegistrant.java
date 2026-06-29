@@ -21,6 +21,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin another_telephony, com.shounakmulay.telephony.TelephonyPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new com.songhieu.flutter_litert_lm.FlutterLitertLmPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flutter_litert_lm, com.songhieu.flutter_litert_lm.FlutterLitertLmPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.baseflow.permissionhandler.PermissionHandlerPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin permission_handler_android, com.baseflow.permissionhandler.PermissionHandlerPlugin", e);

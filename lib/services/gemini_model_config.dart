@@ -1,0 +1,1 @@
+const String kGeminiModelName = 'gemini-2.0-flash';
