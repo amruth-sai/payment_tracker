@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/transaction.dart';
 import '../models/salary_cycle.dart';
 import '../services/local_storage_service.dart';
+import 'salary_month_closeout_screen.dart';
 
 class SalaryCycleScreen extends StatefulWidget {
   const SalaryCycleScreen({super.key});
@@ -68,6 +69,17 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
       appBar: AppBar(
         title: const Text('Salary Cycles'),
         actions: [
+          if (_cycles.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.summarize_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SalaryMonthCloseoutScreen(),
+                ),
+              ),
+              tooltip: 'Salary month closeout',
+            ),
           if (_cycles.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.refresh),

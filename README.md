@@ -17,6 +17,8 @@ an on-device SQLite database.
 - Transaction search, filtering, correction, notes, tags, and ignored items
 - Review inbox for payment SMS with an unclear debit/credit direction, plus local merchant rules
 - Merchant cleanup rules for normalizing matching SMS to a merchant, category, and tag
+- Salary-month closeouts for income, savings, category changes, recurring payments, and reimbursables
+- Password-protected local backups with Android document picker restore, merge, and replace options
 - Accounts, salary cycles, budgets, category and merchant breakdowns
 - Spending heatmap, recurring EMI detection, alerts, and transfer grouping
 - User-defined categories and a configurable tracking start point

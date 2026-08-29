@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:payment_tracker/models/transaction.dart';
+import 'package:payment_tracker/models/local_backup.dart';
+import 'package:payment_tracker/models/salary_cycle.dart';
 import 'package:payment_tracker/models/transaction_review.dart';
+import 'package:payment_tracker/services/salary_closeout_service.dart';
 import 'package:payment_tracker/services/sms_parser.dart';
 import 'package:payment_tracker/services/transaction_export_service.dart';
 import 'package:payment_tracker/services/transfer_service.dart';
@@ -97,6 +100,169 @@ void main() {
 
       expect(restored.tag, 'Dining');
       expect(restored.copyWith(clearTag: true).tag, isNull);
+    });
+  });
+
+  group('LocalBackup', () {
+    test('round-trips a versioned backup snapshot', () {
+      final backup = LocalBackup(
+        createdAt: DateTime.utc(2026, 8, 30, 10),
+        databaseVersion: 10,
+        tables: {
+          'transactions': [
+            {'id': 'transaction-1', 'amount': 500},
+          ],
+          'user_settings': [
+            {'key': 'currency', 'value': 'INR'},
+          ],
+        },
+      );
+
+      final restored = LocalBackup.fromJson(backup.toJson());
+
+      expect(restored.databaseVersion, 10);
+      expect(restored.transactionCount, 1);
+      expect(restored.recordCount, 2);
+      expect(restored.tables['user_settings']!.single['value'], 'INR');
+    });
+
+    test('rejects a backup with an unsupported format', () {
+      expect(
+        () => LocalBackup.fromJson({
+          'format': 'unknown',
+          'format_version': 1,
+          'created_at': DateTime.utc(2026, 8, 30).toIso8601String(),
+          'database_version': 10,
+          'tables': <String, dynamic>{},
+        }),
+        throwsFormatException,
+      );
+    });
+  });
+
+  group('SalaryCloseoutService', () {
+    test('summarizes a cycle without ignored expenses or transfers', () {
+      final previousCycle = SalaryCycle(
+        id: 'september',
+        startDate: DateTime(2026, 9, 1),
+        endDate: DateTime(2026, 9, 30, 23, 59, 59),
+        salaryAmount: 1000,
+        salaryTransactionId: 'salary-september',
+        transactions: [
+          _transaction(
+            id: 'salary-september',
+            amount: 1000,
+            type: TransactionType.credit,
+            sender: 'Employer',
+            accountLast4: '1111',
+            date: DateTime(2026, 9, 1),
+            rawMessage: 'Salary',
+          ).copyWith(isSalary: true),
+          _transaction(
+            id: 'food-september',
+            amount: 100,
+            type: TransactionType.debit,
+            sender: 'Cafe',
+            accountLast4: '1111',
+            date: DateTime(2026, 9, 4),
+            rawMessage: 'Cafe payment',
+          ).copyWith(category: TransactionCategory.foodDining),
+          _transaction(
+            id: 'subscription-september',
+            amount: 80,
+            type: TransactionType.debit,
+            sender: 'StreamBox',
+            accountLast4: '1111',
+            date: DateTime(2026, 9, 5),
+            rawMessage: 'Subscription',
+          ),
+        ],
+      );
+      final targetCycle = SalaryCycle(
+        id: 'october',
+        startDate: DateTime(2026, 10, 1),
+        endDate: DateTime(2026, 10, 31, 23, 59, 59),
+        salaryAmount: 1000,
+        salaryTransactionId: 'salary-october',
+        transactions: [
+          _transaction(
+            id: 'salary-october',
+            amount: 1000,
+            type: TransactionType.credit,
+            sender: 'Employer',
+            accountLast4: '1111',
+            date: DateTime(2026, 10, 1),
+            rawMessage: 'Salary',
+          ).copyWith(isSalary: true),
+          _transaction(
+            id: 'food-october',
+            amount: 300,
+            type: TransactionType.debit,
+            sender: 'Cafe',
+            accountLast4: '1111',
+            date: DateTime(2026, 10, 4),
+            rawMessage: 'Cafe payment',
+          ).copyWith(category: TransactionCategory.foodDining),
+          _transaction(
+            id: 'reimbursable-october',
+            amount: 75,
+            type: TransactionType.debit,
+            sender: 'Office Shop',
+            accountLast4: '1111',
+            date: DateTime(2026, 10, 6),
+            rawMessage: 'Office supplies',
+          ).copyWith(tag: 'reimbursable'),
+          _transaction(
+            id: 'subscription-october',
+            amount: 80,
+            type: TransactionType.debit,
+            sender: 'StreamBox',
+            accountLast4: '1111',
+            date: DateTime(2026, 10, 5),
+            rawMessage: 'Subscription',
+          ),
+          _transaction(
+            id: 'ignored-october',
+            amount: 900,
+            type: TransactionType.debit,
+            sender: 'Ignored Shop',
+            accountLast4: '1111',
+            date: DateTime(2026, 10, 7),
+            rawMessage: 'Ignored',
+          ).copyWith(isIgnored: true),
+        ],
+      );
+      final olderSubscription = _transaction(
+        id: 'subscription-august',
+        amount: 80,
+        type: TransactionType.debit,
+        sender: 'StreamBox',
+        accountLast4: '1111',
+        date: DateTime(2026, 8, 5),
+        rawMessage: 'Subscription',
+      );
+
+      final closeout = SalaryCloseoutService.build(
+        cycle: targetCycle,
+        previousCycle: previousCycle,
+        allTransactions: [
+          ...previousCycle.transactions,
+          ...targetCycle.transactions,
+          olderSubscription,
+        ],
+      );
+
+      expect(closeout.income, 1000);
+      expect(closeout.spending, 455);
+      expect(closeout.savings, 545);
+      expect(closeout.reimbursableAmount, 75);
+      expect(closeout.reimbursableTransactions, hasLength(1));
+      expect(
+        closeout.recurringPayments.map((payment) => payment.merchant),
+        contains('StreamBox'),
+      );
+      expect(closeout.categoryChanges.first.categoryId, 'food_dining');
+      expect(closeout.categoryChanges.first.difference, 200);
     });
   });
 

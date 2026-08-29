@@ -12,6 +12,7 @@ import '../models/app_alert.dart';
 import '../models/custom_category.dart';
 import '../models/standard_category.dart';
 import '../models/category_preferences.dart';
+import '../models/local_backup.dart';
 import '../models/transaction_review.dart';
 import '../constants/transfer_constants.dart';
 
@@ -21,6 +22,8 @@ class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
   static const int _dbVersion = 10; // v10: tags on merchant cleanup rules
+
+  static const _backupExcludedTables = {'android_metadata'};
 
   static Future<void> _createTransactionReviewTables(Database db) async {
     await db.execute('''
@@ -883,6 +886,98 @@ class LocalStorageService {
       await db.execute('ALTER TABLE transaction_reviews ADD COLUMN tag TEXT');
       await db.execute('ALTER TABLE merchant_rules ADD COLUMN tag TEXT');
     }
+  }
+
+  // ==================== BACKUP AND RESTORE ====================
+
+  static Future<LocalBackup> createBackup() async {
+    final db = await database;
+    final tables = await _backupTableNames(db);
+    final data = <String, List<Map<String, dynamic>>>{};
+
+    for (final table in tables) {
+      final rows = await db.query(table);
+      data[table] = rows.map((row) => Map<String, dynamic>.from(row)).toList();
+    }
+
+    return LocalBackup(
+      createdAt: DateTime.now().toUtc(),
+      databaseVersion: _dbVersion,
+      tables: data,
+    );
+  }
+
+  static Future<int> restoreBackup(
+    LocalBackup backup,
+    BackupRestoreMode mode,
+  ) async {
+    if (backup.databaseVersion > _dbVersion) {
+      throw const FormatException(
+        'This backup was made by a newer version of Payment Tracker.',
+      );
+    }
+
+    final db = await database;
+    final currentTables = await _backupTableNames(db);
+    final backupTables = backup.tables.keys.toSet();
+
+    if (mode == BackupRestoreMode.replace &&
+        !currentTables.every(backupTables.contains)) {
+      throw const FormatException(
+        'This backup is missing data required for a safe replacement restore.',
+      );
+    }
+
+    final tablesToRestore = currentTables
+        .where(backupTables.contains)
+        .toList(growable: false);
+    if (tablesToRestore.isEmpty) {
+      throw const FormatException('This backup does not contain app data.');
+    }
+
+    await db.execute('PRAGMA foreign_keys = OFF');
+    try {
+      await db.transaction((txn) async {
+        if (mode == BackupRestoreMode.replace) {
+          for (final table in currentTables.reversed) {
+            await txn.delete(table);
+          }
+        }
+
+        for (final table in tablesToRestore) {
+          final rows = backup.tables[table]!;
+          for (final row in rows) {
+            await txn.insert(
+              table,
+              row,
+              conflictAlgorithm: mode == BackupRestoreMode.merge
+                  ? ConflictAlgorithm.ignore
+                  : ConflictAlgorithm.replace,
+            );
+          }
+        }
+      });
+    } finally {
+      await db.execute('PRAGMA foreign_keys = ON');
+    }
+
+    await _syncStandardCategoryCatalog(db);
+    return tablesToRestore.fold<int>(
+      0,
+      (count, table) => count + backup.tables[table]!.length,
+    );
+  }
+
+  static Future<List<String>> _backupTableNames(Database db) async {
+    final rows = await db.rawQuery(
+      'SELECT name FROM sqlite_master '
+      'WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' '
+      'ORDER BY name',
+    );
+    return rows
+        .map((row) => row['name'] as String)
+        .where((name) => !_backupExcludedTables.contains(name))
+        .toList(growable: false);
   }
 
   // ==================== TRANSACTION OPERATIONS ====================

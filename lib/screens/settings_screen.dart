@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
+import '../models/local_backup.dart';
 import '../models/salary_cycle.dart';
-import 'merchant_rules_screen.dart';
+import '../services/backup_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/sms_service.dart';
 import '../services/transaction_export_service.dart';
+import 'merchant_rules_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,6 +22,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Map<String, int> _cacheStats = const {};
   bool _isLoading = true;
   bool _isExporting = false;
+  bool _isBackingUp = false;
+  bool _isRestoring = false;
 
   @override
   void initState() {
@@ -97,6 +104,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             icon: const Icon(Icons.auto_fix_high_outlined),
                             label: const Text('Manage Merchant Rules'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Backup & Restore',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Create a password-protected backup of all app data, including '
+                          'transactions, settings, and payment SMS. Choose Drive, Downloads, '
+                          'or another location with Android\'s document picker.',
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _isBackingUp || _isRestoring
+                                ? null
+                                : _createBackup,
+                            icon: _isBackingUp
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.lock_outline),
+                            label: Text(
+                              _isBackingUp
+                                  ? 'Creating Backup...'
+                                  : 'Create Encrypted Backup',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _isBackingUp || _isRestoring
+                                ? null
+                                : _restoreBackup,
+                            icon: _isRestoring
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.settings_backup_restore),
+                            label: Text(
+                              _isRestoring
+                                  ? 'Restoring Backup...'
+                                  : 'Restore Encrypted Backup',
+                            ),
                           ),
                         ),
                       ],
@@ -295,6 +365,219 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _isExporting = false);
       }
     }
+  }
+
+  Future<void> _createBackup() async {
+    final password = await _askForBackupPassword(confirm: true);
+    if (password == null || !mounted) return;
+
+    setState(() => _isBackingUp = true);
+    try {
+      await BackupService.createEncryptedBackup(password);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Encrypted backup saved. Keep its password safe.')),
+      );
+    } catch (error) {
+      _showBackupError(error, fallback: 'Unable to create the backup.');
+    } finally {
+      if (mounted) {
+        setState(() => _isBackingUp = false);
+      }
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    setState(() => _isRestoring = true);
+    try {
+      final encryptedContent = await BackupService.chooseEncryptedBackup();
+      if (encryptedContent == null || !mounted) return;
+
+      final password = await _askForBackupPassword(confirm: false);
+      if (password == null || !mounted) return;
+
+      final backup = await BackupService.decryptBackup(encryptedContent, password);
+      if (!mounted) return;
+
+      final mode = await _chooseRestoreMode(backup);
+      if (mode == null || !mounted) return;
+      if (mode == BackupRestoreMode.replace) {
+        final confirmed = await _confirmReplacement();
+        if (!confirmed) return;
+      }
+      if (!mounted) return;
+
+      final records = await LocalStorageService.restoreBackup(backup, mode);
+      if (!mounted) return;
+      await context.read<SmsService>().reloadFromCache();
+      await _loadCacheStats();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${mode == BackupRestoreMode.merge ? 'Merged' : 'Restored'} '
+            '$records backup records.',
+          ),
+        ),
+      );
+    } catch (error) {
+      _showBackupError(error, fallback: 'Unable to restore this backup.');
+    } finally {
+      if (mounted) {
+        setState(() => _isRestoring = false);
+      }
+    }
+  }
+
+  Future<String?> _askForBackupPassword({required bool confirm}) async {
+    final passwordController = TextEditingController();
+    final confirmationController = TextEditingController();
+    String? error;
+
+    final password = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(confirm ? 'Protect Your Backup' : 'Backup Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                confirm
+                    ? 'Use a password with at least 8 characters. It cannot be recovered.'
+                    : 'Enter the password used when this backup was created.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Password'),
+              ),
+              if (confirm) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmationController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Confirm password'),
+                ),
+              ],
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = passwordController.text;
+                if (value.length < 8) {
+                  setDialogState(() => error = 'Use at least 8 characters.');
+                  return;
+                }
+                if (confirm && value != confirmationController.text) {
+                  setDialogState(() => error = 'Passwords do not match.');
+                  return;
+                }
+                Navigator.pop(context, value);
+              },
+              child: Text(confirm ? 'Continue' : 'Unlock'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    passwordController.dispose();
+    confirmationController.dispose();
+    return password;
+  }
+
+  Future<BackupRestoreMode?> _chooseRestoreMode(LocalBackup backup) {
+    final formattedDate = DateFormat('d MMM yyyy, h:mm a').format(
+      backup.createdAt.toLocal(),
+    );
+    return showDialog<BackupRestoreMode>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Created $formattedDate with ${backup.transactionCount} '
+              'transactions and ${backup.recordCount} total records.',
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Merge adds records that are not already on this device. '
+              'When a record already exists locally, it stays unchanged.',
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Replace deletes current app data, then restores this backup.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, BackupRestoreMode.merge),
+            child: const Text('Merge'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, BackupRestoreMode.replace),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _confirmReplacement() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Replace All App Data?'),
+            content: const Text(
+              'Your current transactions, settings, and cleanup rules will be removed '
+              'before this backup is restored. This cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Replace Data'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  void _showBackupError(Object error, {required String fallback}) {
+    if (!mounted || error is PlatformException && error.code == 'cancelled') {
+      return;
+    }
+    final message = error is FormatException ? error.message : fallback;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<_ExportPeriod?> _chooseExportPeriod() async {
