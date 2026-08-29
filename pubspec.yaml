@@ -15,9 +15,6 @@ dependencies:
   permission_handler: ^11.3.0 # Runtime permissions
   intl: ^0.19.0               # Date/number formatting
   fl_chart: ^0.68.0           # Charts for spending overview
-  shared_preferences: ^2.2.3  # Local storage for settings
-  http: ^1.2.0                # For AI API calls
-  google_generative_ai: ^0.4.0 # Google Gemini AI
   sqflite: ^2.3.0             # Local SQLite database
   path: ^1.8.3                # Path utilities for database
   uuid: ^4.0.0                # UUID generation for dynamic categories

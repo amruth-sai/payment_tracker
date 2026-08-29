@@ -7,14 +7,14 @@ class Budget {
   final String id;
   final String standardCategoryId;
   final double monthlyLimit;
-  final bool isAiSuggested;
+  final bool isSuggested;
   final DateTime createdAt;
 
   Budget({
     required this.id,
     required this.standardCategoryId,
     required this.monthlyLimit,
-    this.isAiSuggested = false,
+    this.isSuggested = false,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -41,7 +41,7 @@ class Budget {
       'id': id,
       'category': standardCategoryId,
       'monthly_limit': monthlyLimit,
-      'is_ai_suggested': isAiSuggested ? 1 : 0,
+      'is_ai_suggested': isSuggested ? 1 : 0,
       'created_at': createdAt.millisecondsSinceEpoch,
     };
   }
@@ -51,7 +51,7 @@ class Budget {
       id: map['id'] as String,
       standardCategoryId: _normalizeStoredCategory(map['category']),
       monthlyLimit: (map['monthly_limit'] as num).toDouble(),
-      isAiSuggested: (map['is_ai_suggested'] as int?) == 1,
+      isSuggested: (map['is_ai_suggested'] as int?) == 1,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }
@@ -60,14 +60,14 @@ class Budget {
     String? id,
     String? standardCategoryId,
     double? monthlyLimit,
-    bool? isAiSuggested,
+    bool? isSuggested,
     DateTime? createdAt,
   }) {
     return Budget(
       id: id ?? this.id,
       standardCategoryId: standardCategoryId ?? this.standardCategoryId,
       monthlyLimit: monthlyLimit ?? this.monthlyLimit,
-      isAiSuggested: isAiSuggested ?? this.isAiSuggested,
+      isSuggested: isSuggested ?? this.isSuggested,
       createdAt: createdAt ?? this.createdAt,
     );
   }

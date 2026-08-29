@@ -7,7 +7,6 @@ import '../models/transaction.dart';
 import '../models/account.dart';
 import '../models/salary_cycle.dart';
 import 'sms_parser.dart';
-import 'ai_sms_parser.dart';
 import 'local_storage_service.dart';
 import 'category_service.dart';
 
@@ -23,8 +22,6 @@ class SmsService extends ChangeNotifier {
   bool _isLoading = false;
   bool _hasPermission = false;
   String? _error;
-  bool _useAI = false;
-  int _aiParsedCount = 0;
   int _ruleParsedCount = 0;
   int _cachedCount = 0;
   int _newlyParsedCount = 0;
@@ -36,8 +33,6 @@ class SmsService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get hasPermission => _hasPermission;
   String? get error => _error;
-  bool get useAI => _useAI;
-  int get aiParsedCount => _aiParsedCount;
   int get ruleParsedCount => _ruleParsedCount;
   int get cachedCount => _cachedCount;
   int get newlyParsedCount => _newlyParsedCount;
@@ -182,18 +177,11 @@ class SmsService extends ChangeNotifier {
     return _hasPermission;
   }
 
-  /// Initialize AI parser if API key is available
-  Future<void> initializeAI() async {
-    _useAI = await AiSmsParser.loadSavedApiKey();
-    notifyListeners();
-  }
-
   /// Load transactions - uses cache first, then parses only new SMS
   Future<void> loadTransactions(
       {int daysBack = 90, bool forceRefresh = false}) async {
     _isLoading = true;
     _error = null;
-    _aiParsedCount = 0;
     _ruleParsedCount = 0;
     _cachedCount = 0;
     _newlyParsedCount = 0;
@@ -225,10 +213,7 @@ class SmsService extends ChangeNotifier {
       }
       _hasPermission = true;
 
-      // Step 3: Check if AI is available
-      _useAI = AiSmsParser.isInitialized;
-
-      // Step 4: Get already processed SMS IDs
+      // Step 3: Get already processed SMS IDs
       _loadingStatus = 'Checking for new messages...';
       notifyListeners();
 
@@ -237,7 +222,7 @@ class SmsService extends ChangeNotifier {
       final cutoff = DateTime.now().subtract(Duration(days: daysBack));
       final cutoffMs = cutoff.millisecondsSinceEpoch;
 
-      // Step 5: Fetch SMS from inbox
+      // Step 4: Fetch SMS from inbox
       final inbox = await _telephony.getInboxSms(
         columns: [
           SmsColumn.ADDRESS,
@@ -264,7 +249,7 @@ class SmsService extends ChangeNotifier {
 
       final allSms = [...inbox, ...sent];
 
-      // Step 6: Filter out already processed SMS
+      // Step 5: Filter out already processed SMS
       final newSms = allSms.where((sms) {
         final id = sms.id?.toString() ?? '';
         return id.isNotEmpty && !processedIds.contains(id);
@@ -280,8 +265,10 @@ class SmsService extends ChangeNotifier {
       _loadingStatus = 'Processing ${newSms.length} new messages...';
       notifyListeners();
 
-      // Step 7: Parse only new SMS
+      // Step 6: Parse only new SMS. Writes are batched after parsing so a
+      // large inbox does not pay a database round-trip for every message.
       final newTransactions = <Transaction>[];
+      final transactionIds = <String>[];
       final nonTransactionIds = <String>[];
 
       for (int i = 0; i < newSms.length; i++) {
@@ -290,31 +277,16 @@ class SmsService extends ChangeNotifier {
         final body = sms.body ?? '';
         final dateMs = int.tryParse(sms.date?.toString() ?? '0') ?? 0;
         final date = DateTime.fromMillisecondsSinceEpoch(dateMs);
-        final id = sms.id?.toString() ?? UniqueKey().toString();
+        final id = sms.id?.toString();
+        if (id == null || id.isEmpty) {
+          continue;
+        }
 
         Transaction? tx;
-        String parsedBy = 'rule';
-
-        if (_useAI) {
-          // Use AI parser - it can detect ANY transaction
-          if (AiSmsParser.mightBeTransaction(body)) {
-            _loadingStatus = 'AI parsing ${i + 1}/${newSms.length}...';
-            notifyListeners();
-
-            tx = await AiSmsParser.parse(body, sender, date, id);
-            if (tx != null) {
-              _aiParsedCount++;
-              parsedBy = 'ai';
-            }
-          }
-        } else {
-          // Use rule-based parser - limited to known senders
-          if (SmsParser.isBankSms(sender)) {
-            tx = await SmsParser.parse(body, sender, date, id);
-            if (tx != null) {
-              _ruleParsedCount++;
-              parsedBy = 'rule';
-            }
+        if (SmsParser.isBankSms(sender)) {
+          tx = await SmsParser.parse(body, sender, date, id);
+          if (tx != null) {
+            _ruleParsedCount++;
           }
         }
 
@@ -330,17 +302,22 @@ class SmsService extends ChangeNotifier {
             clearCategory: category == null,
           );
           newTransactions.add(categorizedTx);
-          // Save transaction to cache
-          await LocalStorageService.saveTransaction(categorizedTx,
-              parsedBy: parsedBy);
-          await LocalStorageService.markSmsAsProcessed(id, isTransaction: true);
+          transactionIds.add(id);
         } else {
           // Mark as processed but not a transaction
           nonTransactionIds.add(id);
         }
       }
 
-      // Mark non-transaction SMS as processed in batch
+      if (newTransactions.isNotEmpty) {
+        await LocalStorageService.saveTransactions(newTransactions);
+        await LocalStorageService.markSmsListAsProcessed(
+          transactionIds,
+          isTransaction: true,
+        );
+      }
+
+      // Mark non-transaction SMS as processed in batch.
       if (nonTransactionIds.isNotEmpty) {
         await LocalStorageService.markSmsListAsProcessed(nonTransactionIds);
       }
@@ -348,15 +325,15 @@ class SmsService extends ChangeNotifier {
       _newlyParsedCount = newTransactions.length;
       _newlyFoundTransactions = List.unmodifiable(newTransactions); // Feature 6
 
-      // Step 8: Merge new transactions with cached ones
+      // Step 7: Merge new transactions with cached ones
       if (newTransactions.isNotEmpty) {
         // Reload all from cache to get sorted & deduplicated list
         _transactions = await _getFilteredTransactions();
       }
 
       _loadingStatus = 'Done! $_newlyParsedCount new transactions found';
-    } catch (e) {
-      _error = 'Failed to read SMS: $e';
+    } catch (_) {
+      _error = 'Unable to read messages right now. Please try again.';
     }
 
     await _loadAccounts();

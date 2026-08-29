@@ -29,30 +29,41 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
   }
 
   Future<void> _load() async {
-    final [date, txId, txs] = await Future.wait([
-      LocalStorageService.getTrackFromDate(),
-      LocalStorageService.getTrackFromTransactionId(),
-      LocalStorageService.getAllTransactions(),
-    ]);
+    try {
+      final [date, txId, txs] = await Future.wait([
+        LocalStorageService.getTrackFromDate(),
+        LocalStorageService.getTrackFromTransactionId(),
+        LocalStorageService.getAllTransactions(),
+      ]);
 
-    final allTxs = txs as List<Transaction>;
-    final trackTxId = txId as String?;
-    final trackDate = date as DateTime?;
+      final allTxs = txs as List<Transaction>;
+      final trackTxId = txId as String?;
+      final trackDate = date as DateTime?;
+      Transaction? anchor;
+      if (trackTxId != null) {
+        for (final transaction in allTxs) {
+          if (transaction.id == trackTxId) {
+            anchor = transaction;
+            break;
+          }
+        }
+      }
 
-    Transaction? anchor;
-    if (trackTxId != null) {
-      try {
-        anchor = allTxs.firstWhere((t) => t.id == trackTxId);
-      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _trackFromDate = trackDate;
+        _trackFromTxId = trackTxId;
+        _allTransactions = allTxs;
+        _anchorTransaction = anchor;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to load tracking settings.')),
+      );
     }
-
-    setState(() {
-      _trackFromDate = trackDate;
-      _trackFromTxId = trackTxId;
-      _allTransactions = allTxs;
-      _anchorTransaction = anchor;
-      _loading = false;
-    });
   }
 
   Future<void> _save() async {

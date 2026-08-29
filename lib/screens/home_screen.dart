@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
-import '../services/ai_sms_parser.dart';
 import '../models/transaction.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/summary_card.dart';
@@ -45,7 +44,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final sms = context.read<SmsService>();
-      await sms.initializeAI(); // Load AI if API key exists
 
       // Check if user has completed onboarding (tracking start point)
       final hasOnboarded = await LocalStorageService.hasCompletedOnboarding();
@@ -193,38 +191,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAppBar(BuildContext context) {
-    // ignore: unused_local_variable
-    final _ =
-        context.watch<SmsService>(); // Trigger rebuild when AI status changes
     return SliverAppBar(
       floating: true,
       snap: true,
-      title: Row(
-        children: [
-          const Text(
-            'Payment Tracker',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          if (AiSmsParser.isInitialized) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.auto_awesome, size: 12, color: Colors.amber),
-                  SizedBox(width: 2),
-                  Text('AI',
-                      style: TextStyle(fontSize: 10, color: Colors.amber)),
-                ],
-              ),
-            ),
-          ],
-        ],
+      title: const Text(
+        'Payment Tracker',
+        style: TextStyle(fontWeight: FontWeight.w800),
       ),
       actions: [
         IconButton(
@@ -282,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
               context,
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
             );
-            // Reload with potentially new AI settings
+            // Refresh cached statistics after settings changes.
             if (context.mounted) {
               context.read<SmsService>().loadTransactions();
             }

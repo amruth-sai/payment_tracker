@@ -132,7 +132,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           IconButton(
             icon: const Icon(Icons.auto_awesome),
             tooltip: 'Spending Suggestions',
-            onPressed: _showAISuggestions,
+            onPressed: _showSuggestions,
           ),
         ],
       ),
@@ -373,7 +373,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
-            onPressed: _showAISuggestions,
+            onPressed: _showSuggestions,
             icon: const Icon(Icons.auto_awesome),
             label: const Text('Get Suggestions'),
           ),
@@ -412,7 +412,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           category.displayName,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        if (status.budget.isAiSuggested)
+                        if (status.budget.isSuggested)
                           const Text(
                             'Suggested from recent spending',
                             style: TextStyle(fontSize: 10, color: Colors.amber),
@@ -539,7 +539,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
   }
 
-  Future<void> _showAISuggestions() async {
+  Future<void> _showSuggestions() async {
     if (_monthlyIncome <= 0) {
       await _setMonthlyIncome();
       if (_monthlyIncome <= 0) return;
@@ -561,7 +561,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       builder: (_) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.auto_awesome, color: Colors.amber),
+            Icon(Icons.savings_outlined, color: Colors.amber),
             SizedBox(width: 8),
             Text('Budget Suggestions'),
           ],
@@ -620,7 +620,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
             id: 'budget_${entry.key}',
             standardCategoryId: entry.key,
             monthlyLimit: entry.value,
-            isAiSuggested: true,
+            isSuggested: true,
           ),
         );
       }
@@ -709,7 +709,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     id: existing?.id ?? 'budget_$selectedCategoryId',
                     standardCategoryId: selectedCategoryId,
                     monthlyLimit: limit,
-                    isAiSuggested: existing?.isAiSuggested ?? false,
+                    isSuggested: existing?.isSuggested ?? false,
                     createdAt: existing?.createdAt,
                   ),
                 );

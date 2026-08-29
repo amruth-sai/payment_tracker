@@ -838,89 +838,63 @@ class LocalStorageService {
   // ==================== TRANSACTION OPERATIONS ====================
 
   /// Save a parsed transaction to local storage
-  static Future<void> saveTransaction(Transaction tx,
-      {String parsedBy = 'rule'}) async {
+  static Future<void> saveTransaction(Transaction tx) async {
     final db = await database;
 
     await db.insert(
       'transactions',
-      {
-        'id': tx.id,
-        'sms_id': tx.id, // Using SMS ID as the unique identifier
-        'amount': tx.amount,
-        'type': tx.type.name,
-        'source': tx.source.name,
-        'sender': tx.sender,
-        'merchant': tx.merchant,
-        'account_last4': tx.accountLast4,
-        'date': tx.date.millisecondsSinceEpoch,
-        'raw_message': tx.rawMessage,
-        'reference_id': tx.referenceId,
-        'balance': tx.balance,
-        'parsed_by': parsedBy,
-        'account_id': tx.accountId,
-        'is_user_corrected': tx.isUserCorrected ? 1 : 0,
-        'is_salary': tx.isSalary ? 1 : 0,
-        'category': tx.effectiveLegacyCategory?.name,
-        'standard_category_id': tx.effectiveStandardCategoryId,
-        'note': tx.note,
-        'tag': tx.tag,
-        'is_ignored': tx.isIgnored ? 1 : 0,
-        'custom_category_id': tx.customCategoryId,
-        TransferConstants.transferGroupIdField: tx.transferGroupId,
-        TransferConstants.transferPartnerIdField: tx.transferPartnerId,
-        TransferConstants.isTransferSourceField: tx.isTransferSource ? 1 : 0,
-        TransferConstants.isTransferDestinationField:
-            tx.isTransferDestination ? 1 : 0,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      },
+      _transactionValues(tx),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
   /// Save multiple transactions in a batch
-  static Future<void> saveTransactions(List<Transaction> transactions,
-      {String parsedBy = 'rule'}) async {
+  static Future<void> saveTransactions(List<Transaction> transactions) async {
     final db = await database;
     final batch = db.batch();
 
     for (final tx in transactions) {
       batch.insert(
         'transactions',
-        {
-          'id': tx.id,
-          'sms_id': tx.id,
-          'amount': tx.amount,
-          'type': tx.type.name,
-          'source': tx.source.name,
-          'sender': tx.sender,
-          'merchant': tx.merchant,
-          'account_last4': tx.accountLast4,
-          'date': tx.date.millisecondsSinceEpoch,
-          'raw_message': tx.rawMessage,
-          'reference_id': tx.referenceId,
-          'balance': tx.balance,
-          'parsed_by': parsedBy,
-          'account_id': tx.accountId,
-          'is_user_corrected': tx.isUserCorrected ? 1 : 0,
-          'is_salary': tx.isSalary ? 1 : 0,
-          'category': tx.effectiveLegacyCategory?.name,
-          'standard_category_id': tx.effectiveStandardCategoryId,
-          'note': tx.note,
-          'tag': tx.tag,
-          'is_ignored': tx.isIgnored ? 1 : 0,
-          'custom_category_id': tx.customCategoryId,
-          'transfer_group_id': tx.transferGroupId,
-          'transfer_partner_id': tx.transferPartnerId,
-          'is_transfer_source': tx.isTransferSource ? 1 : 0,
-          'is_transfer_destination': tx.isTransferDestination ? 1 : 0,
-          'created_at': DateTime.now().millisecondsSinceEpoch,
-        },
+        _transactionValues(tx),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
 
     await batch.commit(noResult: true);
+  }
+
+  static Map<String, dynamic> _transactionValues(Transaction tx) {
+    return {
+      'id': tx.id,
+      'sms_id': tx.id,
+      'amount': tx.amount,
+      'type': tx.type.name,
+      'source': tx.source.name,
+      'sender': tx.sender,
+      'merchant': tx.merchant,
+      'account_last4': tx.accountLast4,
+      'date': tx.date.millisecondsSinceEpoch,
+      'raw_message': tx.rawMessage,
+      'reference_id': tx.referenceId,
+      'balance': tx.balance,
+      'parsed_by': 'rule',
+      'account_id': tx.accountId,
+      'is_user_corrected': tx.isUserCorrected ? 1 : 0,
+      'is_salary': tx.isSalary ? 1 : 0,
+      'category': tx.effectiveLegacyCategory?.name,
+      'standard_category_id': tx.effectiveStandardCategoryId,
+      'note': tx.note,
+      'tag': tx.tag,
+      'is_ignored': tx.isIgnored ? 1 : 0,
+      'custom_category_id': tx.customCategoryId,
+      TransferConstants.transferGroupIdField: tx.transferGroupId,
+      TransferConstants.transferPartnerIdField: tx.transferPartnerId,
+      TransferConstants.isTransferSourceField: tx.isTransferSource ? 1 : 0,
+      TransferConstants.isTransferDestinationField:
+          tx.isTransferDestination ? 1 : 0,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    };
   }
 
   /// Update a transaction (for user corrections)
@@ -1503,16 +1477,9 @@ class LocalStorageService {
         ) ??
         0;
 
-    final aiParsedCount = Sqflite.firstIntValue(
-          await db.rawQuery(
-              "SELECT COUNT(*) FROM transactions WHERE parsed_by = 'ai'"),
-        ) ??
-        0;
-
     return {
       'transactions': txCount,
       'processed_sms': processedCount,
-      'ai_parsed': aiParsedCount,
     };
   }
 

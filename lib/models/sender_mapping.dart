@@ -62,7 +62,7 @@ class DiscoveredSender {
   final DateTime firstSeen;
   final DateTime lastSeen;
   final List<String> sampleMessages; // Sample SMS bodies for user to identify
-  final String? suggestedAccountName; // AI/rule-based suggestion for account name
+  final String? suggestedAccountName; // Rule-based suggestion for account name
   final String? suggestedAccountType; // 'bank_account' or 'credit_card'
 
   DiscoveredSender({
