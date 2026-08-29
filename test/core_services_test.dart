@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:payment_tracker/models/transaction.dart';
 import 'package:payment_tracker/services/sms_parser.dart';
+import 'package:payment_tracker/services/transaction_export_service.dart';
 import 'package:payment_tracker/services/transfer_service.dart';
 
 void main() {
@@ -61,6 +62,48 @@ void main() {
       expect(pairs, hasLength(1));
       expect(pairs.single.debitTransaction.id, 'debit');
       expect(pairs.single.creditTransaction.id, 'credit');
+    });
+  });
+
+  group('TransactionExportService.buildExport', () {
+    test('includes tags and excludes ignored transactions', () {
+      final included = _transaction(
+        id: 'included',
+        amount: 900,
+        type: TransactionType.debit,
+        sender: 'HDFC Bank',
+        accountLast4: '1111',
+        date: DateTime(2026, 8, 30),
+        rawMessage: 'private message',
+      ).copyWith(tag: 'reimbursable');
+      final ignored = _transaction(
+        id: 'ignored',
+        amount: 250,
+        type: TransactionType.debit,
+        sender: 'HDFC Bank',
+        accountLast4: '1111',
+        date: DateTime(2026, 8, 30),
+        rawMessage: 'private message',
+      ).copyWith(isIgnored: true);
+
+      final start = DateTime(2026, 8, 1);
+      final end = DateTime(2026, 8, 31, 23, 59, 59, 999);
+      final export = TransactionExportService.buildExport(
+        [included, ignored],
+        start: start,
+        end: end,
+        periodLabel: 'August 2026 salary month',
+      );
+      final transactions = export['transactions'] as List<dynamic>;
+      final transaction = transactions.single as Map<String, dynamic>;
+      final period = export['period'] as Map<String, dynamic>;
+
+      expect(export['transaction_count'], 1);
+      expect(period['label'], 'August 2026 salary month');
+      expect(period['start'], start.toIso8601String());
+      expect(period['end'], end.toIso8601String());
+      expect(transaction['tag'], 'reimbursable');
+      expect(transaction.containsKey('raw_message'), isFalse);
     });
   });
 }

@@ -18,11 +18,16 @@ dependencies:
   sqflite: ^2.3.0             # Local SQLite database
   path: ^1.8.3                # Path utilities for database
   uuid: ^4.0.0                # UUID generation for dynamic categories
+  share_plus: ^11.1.0         # Android share sheet for transaction exports
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+
+dependency_overrides:
+  # 2.6.x uses a native-asset hook that fails when Flutter is under a Windows path with spaces.
+  path_provider_foundation: 2.5.1
 
 flutter:
   uses-material-design: true

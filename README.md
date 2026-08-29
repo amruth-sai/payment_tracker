@@ -18,6 +18,8 @@ an on-device SQLite database.
 - Accounts, salary cycles, budgets, category and merchant breakdowns
 - Spending heatmap, recurring EMI detection, alerts, and transfer grouping
 - User-defined categories and a configurable tracking start point
+- JSON export of all active transactions, a selected period, or a salary month
+  with categories, tags, and notes for sharing
 
 ## Stack
 
@@ -48,3 +50,6 @@ flutter test
 The Android application ID and release signing configuration are still the
 default development values. Set a unique application ID and provide your own
 signing configuration before distributing a release APK.
+
+The export option uses Android's share sheet. It excludes ignored transactions,
+raw SMS messages, balances, and payment reference IDs.
