@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction.dart';
-import 'gemini_model_config.dart';
 import 'sms_parser.dart';
 
 /// AI-powered SMS parser using Google Gemini
@@ -17,7 +16,7 @@ class AiSmsParser {
   /// Get your key at: https://aistudio.google.com/app/apikey
   static Future<void> initialize(String apiKey) async {
     _model = GenerativeModel(
-      model: kGeminiModelName,
+      model: 'gemini-1.5-flash', // Fast and cost-effective
       apiKey: apiKey,
     );
     _isInitialized = true;

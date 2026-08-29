@@ -13,7 +13,6 @@ import '../models/standard_category.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/merged_transfer_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
-import 'ai_finance_assistant_screen.dart';
 import '../utils/date_utils.dart';
 import '../utils/format_utils.dart';
 
@@ -115,18 +114,6 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
         title: const Text('All Transactions',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome_outlined),
-            tooltip: 'Finance Assistant',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const FinanceAssistantScreen(),
-                ),
-              );
-            },
-          ),
           PopupMenuButton<SortOrder>(
             icon: Icon(
               _sortOrder == SortOrder.ascending

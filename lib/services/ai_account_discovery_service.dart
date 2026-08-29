@@ -8,7 +8,6 @@ import '../models/account.dart';
 import '../models/transaction.dart';
 import '../models/sender_mapping.dart';
 import 'ai_sms_parser.dart';
-import 'gemini_model_config.dart';
 import 'local_storage_service.dart';
 
 /// Result of AI-powered account discovery
@@ -149,7 +148,7 @@ class AiAccountDiscoveryService {
   /// Initialize with Gemini API key
   static Future<void> initialize(String apiKey) async {
     _model = GenerativeModel(
-      model: kGeminiModelName,
+      model: 'gemini-1.5-flash',
       apiKey: apiKey,
     );
     _isInitialized = true;

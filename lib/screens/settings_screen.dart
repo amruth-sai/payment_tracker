@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/ai_sms_parser.dart';
-import '../services/local_ai_config.dart';
 import '../services/local_storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -14,39 +13,24 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _assistantModelPathController = TextEditingController();
   final _apiKeyController = TextEditingController();
   bool _isLoading = false;
-  bool _assistantConfigLoading = false;
   bool _obscureKey = true;
   bool _aiEnabled = false;
-  String _assistantBackend = kDefaultLocalAssistantBackend;
   Map<String, int> _cacheStats = {};
 
   @override
   void initState() {
     super.initState();
-    _assistantModelPathController.addListener(_onAssistantModelPathChanged);
     _loadSettings();
     _loadCacheStats();
-  }
-
-  void _onAssistantModelPathChanged() {
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final savedKey = prefs.getString('gemini_api_key') ?? '';
-    final savedModelPath = prefs.getString(kLocalAssistantModelPathKey) ?? '';
-    final savedBackend = prefs.getString(kLocalAssistantBackendKey) ??
-        kDefaultLocalAssistantBackend;
     setState(() {
       _apiKeyController.text = savedKey;
-      _assistantModelPathController.text = savedModelPath;
-      _assistantBackend = savedBackend;
       _aiEnabled = savedKey.isNotEmpty && AiSmsParser.isInitialized;
     });
   }
@@ -92,51 +76,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _saveAssistantConfig() async {
-    final modelPath = _assistantModelPathController.text.trim();
-    if (modelPath.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a local model path')),
-      );
-      return;
-    }
-
-    setState(() => _assistantConfigLoading = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(kLocalAssistantModelPathKey, modelPath);
-      await prefs.setString(kLocalAssistantBackendKey, _assistantBackend);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Offline assistant model saved'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _assistantConfigLoading = false);
-      }
-    }
-  }
-
-  Future<void> _clearAssistantConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(kLocalAssistantModelPathKey);
-    await prefs.remove(kLocalAssistantBackendKey);
-    setState(() {
-      _assistantModelPathController.clear();
-      _assistantBackend = kDefaultLocalAssistantBackend;
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offline assistant config removed')),
-      );
-    }
-  }
-
   Future<void> _clearApiKey() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('gemini_api_key');
@@ -153,8 +92,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    _assistantModelPathController.removeListener(_onAssistantModelPathChanged);
-    _assistantModelPathController.dispose();
     _apiKeyController.dispose();
     super.dispose();
   }
@@ -170,118 +107,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Offline Assistant Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.offline_bolt,
-                        color: _assistantModelPathController.text.isNotEmpty
-                            ? Colors.green
-                            : Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Offline Finance Assistant',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      Chip(
-                        label: Text(
-                          _assistantModelPathController.text.isNotEmpty
-                              ? 'Configured'
-                              : 'Not set',
-                          style: TextStyle(
-                            color: _assistantModelPathController.text.isNotEmpty
-                                ? Colors.green
-                                : Colors.grey,
-                            fontSize: 12,
-                          ),
-                        ),
-                        backgroundColor: _assistantModelPathController.text.isNotEmpty
-                            ? Colors.green.withValues(alpha: 0.1)
-                            : Colors.grey.withValues(alpha: 0.1),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Point this app at a downloaded Gemma .litertlm file from AI Edge Gallery or the LiteRT model collection. This runs fully on-device.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _assistantModelPathController,
-                    decoration: const InputDecoration(
-                      labelText: 'Local model file path',
-                      hintText: '/storage/emulated/0/Download/gemma.litertlm',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.folder_open),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _assistantBackend,
-                    decoration: const InputDecoration(
-                      labelText: 'Backend',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'cpu', child: Text('CPU')),
-                      DropdownMenuItem(value: 'gpu', child: Text('GPU')),
-                      DropdownMenuItem(value: 'npu', child: Text('NPU')),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _assistantBackend = value);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _assistantConfigLoading
-                              ? null
-                              : _saveAssistantConfig,
-                          icon: _assistantConfigLoading
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.save),
-                          label: const Text('Save offline assistant'),
-                        ),
-                      ),
-                      if (_assistantModelPathController.text.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: _clearAssistantConfig,
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: 'Remove local model path',
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
           // AI Parser Section
           Card(
             child: Padding(
