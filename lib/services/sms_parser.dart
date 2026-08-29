@@ -1,6 +1,7 @@
 // lib/services/sms_parser.dart
 
 import '../models/transaction.dart';
+import '../models/transaction_review.dart';
 import '../services/sender_discovery_service.dart';
 import '../services/local_storage_service.dart';
 
@@ -359,6 +360,85 @@ class SmsParser {
       referenceId: _extractRefId(body),
       balance: _extractBalance(body),
     );
+  }
+
+  /// Returns payment-like messages that have an amount but no reliable
+  /// debit/credit direction. These are shown in the local review inbox.
+  static TransactionReview? buildReviewCandidate(
+    String body,
+    String sender,
+    DateTime date,
+    String id,
+  ) {
+    final lower = body.toLowerCase();
+    if (!_hasAmountIndicator(lower)) return null;
+
+    final amount = _extractAmount(body);
+    if (amount == null || amount <= 0) return null;
+
+    if (_detectType(body, sender) != TransactionType.unknown) return null;
+
+    return TransactionReview(
+      id: id,
+      amount: amount,
+      source: _detectSource(body, sender),
+      sender: sender,
+      merchant: _extractMerchant(body, TransactionType.debit) ??
+          _extractMerchant(body, TransactionType.credit),
+      accountLast4: _extractAccountLast4(body),
+      date: date,
+      rawMessage: body,
+      referenceId: _extractRefId(body),
+      balance: _extractBalance(body),
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Creates a confirmed transaction from a review item after a user picks
+  /// its direction. The item is then saved atomically by LocalStorageService.
+  static Future<Transaction> transactionFromReview(
+    TransactionReview review,
+    TransactionType type,
+  ) async {
+    if (type == TransactionType.unknown) {
+      throw ArgumentError.value(type, 'type', 'Must be debit or credit.');
+    }
+
+    String? accountId;
+    try {
+      accountId = await SenderDiscoveryService.getAccountForSender(
+        cleanSender(review.sender),
+      );
+    } catch (_) {
+      // The corrected transaction remains usable without an account mapping.
+    }
+
+    final category =
+        TransactionCategory.fromStandardCategoryId(review.standardCategoryId);
+    return Transaction(
+      id: review.id,
+      amount: review.amount,
+      type: type,
+      source: review.source,
+      sender: await getUnifiedSenderName(review.sender),
+      merchant: review.merchant ?? _extractMerchant(review.rawMessage, type),
+      accountLast4: review.accountLast4,
+      date: review.date,
+      rawMessage: review.rawMessage,
+      referenceId: review.referenceId,
+      balance: review.balance,
+      accountId: accountId,
+      isUserCorrected: true,
+      category: category,
+      standardCategoryId: review.standardCategoryId,
+    );
+  }
+
+  static bool _hasAmountIndicator(String lower) {
+    return lower.contains('rs') ||
+        lower.contains('inr') ||
+        lower.contains('â‚¹') ||
+        lower.contains('amount');
   }
 
   static double? _extractAmount(String body) {

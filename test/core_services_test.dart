@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:payment_tracker/models/transaction.dart';
+import 'package:payment_tracker/models/transaction_review.dart';
 import 'package:payment_tracker/services/sms_parser.dart';
 import 'package:payment_tracker/services/transaction_export_service.dart';
 import 'package:payment_tracker/services/transfer_service.dart';
@@ -32,6 +33,48 @@ void main() {
         ),
         isNull,
       );
+    });
+
+    test('creates a review item when the transaction direction is unclear', () {
+      final review = SmsParser.buildReviewCandidate(
+        'INR 500 transaction alert for your account.',
+        'HDFCBK',
+        DateTime(2026, 8, 30, 10),
+        'sms-review',
+      );
+
+      expect(review, isNotNull);
+      expect(review!.amount, 500);
+      expect(review.source, PaymentSource.bank);
+    });
+
+    test('does not create a review item for a clear debit', () {
+      final review = SmsParser.buildReviewCandidate(
+        'Rs.500 debited from A/C XX1234 for payment to SHOP.',
+        'HDFCBK',
+        DateTime(2026, 8, 30, 10),
+        'sms-debit',
+      );
+
+      expect(review, isNull);
+    });
+  });
+
+  group('MerchantRule', () {
+    test('round-trips its locally stored values', () {
+      final rule = MerchantRule(
+        id: 'rule-1',
+        matchText: 'tea stall',
+        merchant: 'Tea Stall',
+        standardCategoryId: 'food_dining',
+        createdAt: DateTime(2026, 8, 30),
+      );
+
+      final restored = MerchantRule.fromMap(rule.toMap());
+
+      expect(restored.matchText, 'tea stall');
+      expect(restored.merchant, 'Tea Stall');
+      expect(restored.standardCategoryId, 'food_dining');
     });
   });
 

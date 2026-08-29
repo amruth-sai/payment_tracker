@@ -12,6 +12,7 @@ import '../models/app_alert.dart';
 import '../models/custom_category.dart';
 import '../models/standard_category.dart';
 import '../models/category_preferences.dart';
+import '../models/transaction_review.dart';
 import '../constants/transfer_constants.dart';
 
 /// Local SQLite database for caching parsed transactions
@@ -19,7 +20,43 @@ import '../constants/transfer_constants.dart';
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 8; // v8: refreshed standard category catalog
+  static const int _dbVersion = 9; // v9: transaction review inbox and merchant rules
+
+  static Future<void> _createTransactionReviewTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS transaction_reviews (
+        id TEXT PRIMARY KEY,
+        amount REAL NOT NULL,
+        source TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        merchant TEXT,
+        account_last4 TEXT,
+        date INTEGER NOT NULL,
+        raw_message TEXT NOT NULL,
+        reference_id TEXT,
+        balance REAL,
+        standard_category_id TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS merchant_rules (
+        id TEXT PRIMARY KEY,
+        match_text TEXT NOT NULL,
+        merchant TEXT NOT NULL,
+        standard_category_id TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_transaction_reviews_date ON transaction_reviews(date DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_merchant_rules_match ON merchant_rules(match_text)',
+    );
+  }
 
   static String? _legacyCategoryNameForStandardCategoryId(
       String? standardCategoryId) {
@@ -477,6 +514,8 @@ class LocalStorageService {
       });
     }
 
+    await _createTransactionReviewTables(db);
+
     // Indexes for faster lookups
     await db.execute(
         'CREATE INDEX idx_transactions_date ON transactions(date DESC)');
@@ -833,6 +872,10 @@ class LocalStorageService {
     if (oldVersion < 8) {
       await _syncStandardCategoryCatalog(db);
     }
+
+    if (oldVersion < 9) {
+      await _createTransactionReviewTables(db);
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -862,6 +905,107 @@ class LocalStorageService {
     }
 
     await batch.commit(noResult: true);
+  }
+
+  // ==================== TRANSACTION REVIEW OPERATIONS ====================
+
+  static Future<void> saveTransactionReviews(
+    List<TransactionReview> reviews,
+  ) async {
+    if (reviews.isEmpty) return;
+
+    final db = await database;
+    final batch = db.batch();
+    for (final review in reviews) {
+      batch.insert(
+        'transaction_reviews',
+        review.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<TransactionReview>> getTransactionReviews() async {
+    final db = await database;
+    final rows = await db.query('transaction_reviews', orderBy: 'date DESC');
+    return rows.map(TransactionReview.fromMap).toList();
+  }
+
+  static Future<void> updateTransactionReviewCategory(
+    String reviewId,
+    String? standardCategoryId,
+  ) async {
+    final db = await database;
+    await db.update(
+      'transaction_reviews',
+      {'standard_category_id': standardCategoryId},
+      where: 'id = ?',
+      whereArgs: [reviewId],
+    );
+  }
+
+  static Future<void> updateTransactionReviewMerchant(
+    String reviewId,
+    String merchant,
+  ) async {
+    final db = await database;
+    await db.update(
+      'transaction_reviews',
+      {'merchant': merchant},
+      where: 'id = ?',
+      whereArgs: [reviewId],
+    );
+  }
+
+  static Future<void> ignoreTransactionReview(String reviewId) async {
+    final db = await database;
+    await db.delete('transaction_reviews', where: 'id = ?', whereArgs: [reviewId]);
+  }
+
+  static Future<void> resolveTransactionReview(
+    String reviewId,
+    Transaction transaction,
+  ) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.insert(
+        'transactions',
+        _transactionValues(transaction),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.delete(
+        'transaction_reviews',
+        where: 'id = ?',
+        whereArgs: [reviewId],
+      );
+    });
+  }
+
+  static Future<void> saveMerchantRule(MerchantRule rule) async {
+    final db = await database;
+    await db.insert(
+      'merchant_rules',
+      rule.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<MerchantRule?> getMatchingMerchantRule(String rawMessage) async {
+    final db = await database;
+    final rows = await db.query(
+      'merchant_rules',
+      orderBy: 'LENGTH(match_text) DESC, created_at DESC',
+    );
+    final normalizedMessage = rawMessage.toLowerCase();
+
+    for (final row in rows) {
+      final rule = MerchantRule.fromMap(row);
+      if (normalizedMessage.contains(rule.matchText.toLowerCase())) {
+        return rule;
+      }
+    }
+    return null;
   }
 
   static Map<String, dynamic> _transactionValues(Transaction tx) {
@@ -1489,6 +1633,7 @@ class LocalStorageService {
   static Future<void> clearAll() async {
     final db = await database;
     await db.delete('transactions');
+    await db.delete('transaction_reviews');
     await db.delete('processed_sms');
   }
 

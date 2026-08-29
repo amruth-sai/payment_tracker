@@ -24,6 +24,7 @@ import 'custom_categories_screen.dart';
 import 'tracking_settings_screen.dart';
 import 'transfer_management_screen.dart';
 import 'ignored_transactions_screen.dart';
+import 'transaction_review_screen.dart';
 import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -405,7 +406,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(child: SizedBox()), // spacer
+              _QuickActionButton(
+                icon: Icons.rule_folder_outlined,
+                label: 'Review',
+                color: Colors.deepOrange,
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const TransactionReviewScreen(),
+                    ),
+                  );
+                  if (mounted) {
+                    context.read<SmsService>().reloadFromCache();
+                  }
+                },
+              ),
             ],
           ),
           // Alerts banner

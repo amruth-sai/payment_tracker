@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:another_telephony/telephony.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/transaction.dart';
+import '../models/transaction_review.dart';
 import '../models/account.dart';
 import '../models/salary_cycle.dart';
 import 'sms_parser.dart';
@@ -268,6 +269,7 @@ class SmsService extends ChangeNotifier {
       // Step 6: Parse only new SMS. Writes are batched after parsing so a
       // large inbox does not pay a database round-trip for every message.
       final newTransactions = <Transaction>[];
+      final reviewCandidates = <TransactionReview>[];
       final transactionIds = <String>[];
       final nonTransactionIds = <String>[];
 
@@ -283,20 +285,25 @@ class SmsService extends ChangeNotifier {
         }
 
         Transaction? tx;
+        TransactionReview? review;
         if (SmsParser.isBankSms(sender)) {
           tx = await SmsParser.parse(body, sender, date, id);
           if (tx != null) {
             _ruleParsedCount++;
+          } else {
+            review = SmsParser.buildReviewCandidate(body, sender, date, id);
           }
         }
 
         if (tx != null) {
-          // Auto-categorize the transaction
-          final standardCategoryId =
+          final merchantRule =
+              await LocalStorageService.getMatchingMerchantRule(body);
+          final standardCategoryId = merchantRule?.standardCategoryId ??
               CategoryService.categorizeStandardCategoryId(tx);
           final category =
               TransactionCategory.fromStandardCategoryId(standardCategoryId);
           final categorizedTx = tx.copyWith(
+            merchant: merchantRule?.merchant,
             category: category,
             standardCategoryId: standardCategoryId,
             clearCategory: category == null,
@@ -304,6 +311,16 @@ class SmsService extends ChangeNotifier {
           newTransactions.add(categorizedTx);
           transactionIds.add(id);
         } else {
+          if (review != null) {
+            final merchantRule =
+                await LocalStorageService.getMatchingMerchantRule(body);
+            reviewCandidates.add(
+              review.copyWith(
+                merchant: merchantRule?.merchant,
+                standardCategoryId: merchantRule?.standardCategoryId,
+              ),
+            );
+          }
           // Mark as processed but not a transaction
           nonTransactionIds.add(id);
         }
@@ -315,6 +332,10 @@ class SmsService extends ChangeNotifier {
           transactionIds,
           isTransaction: true,
         );
+      }
+
+      if (reviewCandidates.isNotEmpty) {
+        await LocalStorageService.saveTransactionReviews(reviewCandidates);
       }
 
       // Mark non-transaction SMS as processed in batch.
