@@ -20,7 +20,7 @@ import '../constants/transfer_constants.dart';
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 9; // v9: transaction review inbox and merchant rules
+  static const int _dbVersion = 10; // v10: tags on merchant cleanup rules
 
   static Future<void> _createTransactionReviewTables(Database db) async {
     await db.execute('''
@@ -36,6 +36,7 @@ class LocalStorageService {
         reference_id TEXT,
         balance REAL,
         standard_category_id TEXT,
+        tag TEXT,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -46,6 +47,7 @@ class LocalStorageService {
         match_text TEXT NOT NULL,
         merchant TEXT NOT NULL,
         standard_category_id TEXT,
+        tag TEXT,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -876,6 +878,11 @@ class LocalStorageService {
     if (oldVersion < 9) {
       await _createTransactionReviewTables(db);
     }
+
+    if (oldVersion == 9) {
+      await db.execute('ALTER TABLE transaction_reviews ADD COLUMN tag TEXT');
+      await db.execute('ALTER TABLE merchant_rules ADD COLUMN tag TEXT');
+    }
   }
 
   // ==================== TRANSACTION OPERATIONS ====================
@@ -948,11 +955,12 @@ class LocalStorageService {
   static Future<void> updateTransactionReviewMerchant(
     String reviewId,
     String merchant,
+    String? tag,
   ) async {
     final db = await database;
     await db.update(
       'transaction_reviews',
-      {'merchant': merchant},
+      {'merchant': merchant, 'tag': tag},
       where: 'id = ?',
       whereArgs: [reviewId],
     );
@@ -989,6 +997,74 @@ class LocalStorageService {
       rule.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  static Future<List<MerchantRule>> getMerchantRules() async {
+    final db = await database;
+    final rows = await db.query('merchant_rules', orderBy: 'created_at DESC');
+    return rows.map(MerchantRule.fromMap).toList();
+  }
+
+  static Future<void> deleteMerchantRule(String ruleId) async {
+    final db = await database;
+    await db.delete('merchant_rules', where: 'id = ?', whereArgs: [ruleId]);
+  }
+
+  static Future<int> countTransactionsMatchingMerchantRule(
+    MerchantRule rule,
+  ) async {
+    final db = await database;
+    final rows = await db.query('transactions', columns: ['raw_message']);
+    final matchText = rule.matchText.toLowerCase();
+    return rows
+        .where(
+          (row) => ((row['raw_message'] as String?) ?? '')
+              .toLowerCase()
+              .contains(matchText),
+        )
+        .length;
+  }
+
+  /// Applies only the fields the rule defines, leaving amount, direction, and
+  /// any unspecified category or tag untouched.
+  static Future<int> applyMerchantRuleToExistingTransactions(
+    MerchantRule rule,
+  ) async {
+    final db = await database;
+    final rows = await db.query(
+      'transactions',
+      columns: ['id', 'raw_message'],
+    );
+    final matchText = rule.matchText.toLowerCase();
+    final matchingIds = rows
+        .where(
+          (row) => ((row['raw_message'] as String?) ?? '')
+              .toLowerCase()
+              .contains(matchText),
+        )
+        .map((row) => row['id'] as String)
+        .toList();
+    if (matchingIds.isEmpty) return 0;
+
+    final values = <String, Object?>{
+      'merchant': rule.merchant,
+      'is_user_corrected': 1,
+    };
+    if (rule.standardCategoryId != null) {
+      values['standard_category_id'] = rule.standardCategoryId;
+      values['category'] =
+          _legacyCategoryNameForStandardCategoryId(rule.standardCategoryId);
+    }
+    if (rule.tag != null) {
+      values['tag'] = rule.tag;
+    }
+
+    final batch = db.batch();
+    for (final id in matchingIds) {
+      batch.update('transactions', values, where: 'id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
+    return matchingIds.length;
   }
 
   static Future<MerchantRule?> getMatchingMerchantRule(String rawMessage) async {

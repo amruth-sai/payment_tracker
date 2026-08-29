@@ -16,6 +16,7 @@ an on-device SQLite database.
 - Rule-based detection of common Indian bank, UPI, wallet, and card SMS
 - Transaction search, filtering, correction, notes, tags, and ignored items
 - Review inbox for payment SMS with an unclear debit/credit direction, plus local merchant rules
+- Merchant cleanup rules for normalizing matching SMS to a merchant, category, and tag
 - Accounts, salary cycles, budgets, category and merchant breakdowns
 - Spending heatmap, recurring EMI detection, alerts, and transfer grouping
 - User-defined categories and a configurable tracking start point

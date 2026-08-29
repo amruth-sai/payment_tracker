@@ -67,6 +67,7 @@ void main() {
         matchText: 'tea stall',
         merchant: 'Tea Stall',
         standardCategoryId: 'food_dining',
+        tag: 'Dining',
         createdAt: DateTime(2026, 8, 30),
       );
 
@@ -75,6 +76,27 @@ void main() {
       expect(restored.matchText, 'tea stall');
       expect(restored.merchant, 'Tea Stall');
       expect(restored.standardCategoryId, 'food_dining');
+      expect(restored.tag, 'Dining');
+    });
+  });
+
+  group('TransactionReview', () {
+    test('round-trips its optional tag', () {
+      final review = TransactionReview(
+        id: 'review-1',
+        amount: 500,
+        source: PaymentSource.bank,
+        sender: 'HDFCBK',
+        date: DateTime(2026, 8, 30),
+        rawMessage: 'INR 500 transaction alert.',
+        tag: 'Dining',
+        createdAt: DateTime(2026, 8, 30),
+      );
+
+      final restored = TransactionReview.fromMap(review.toMap());
+
+      expect(restored.tag, 'Dining');
+      expect(restored.copyWith(clearTag: true).tag, isNull);
     });
   });
 

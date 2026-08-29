@@ -16,6 +16,7 @@ class TransactionReview {
     this.referenceId,
     this.balance,
     this.standardCategoryId,
+    this.tag,
   });
 
   final String id;
@@ -29,11 +30,14 @@ class TransactionReview {
   final String? referenceId;
   final double? balance;
   final String? standardCategoryId;
+  final String? tag;
   final DateTime createdAt;
 
   TransactionReview copyWith({
     String? merchant,
     String? standardCategoryId,
+    String? tag,
+    bool clearTag = false,
   }) {
     return TransactionReview(
       id: id,
@@ -47,6 +51,7 @@ class TransactionReview {
       referenceId: referenceId,
       balance: balance,
       standardCategoryId: standardCategoryId ?? this.standardCategoryId,
+      tag: clearTag ? null : (tag ?? this.tag),
       createdAt: createdAt,
     );
   }
@@ -64,6 +69,7 @@ class TransactionReview {
       'reference_id': referenceId,
       'balance': balance,
       'standard_category_id': standardCategoryId,
+      'tag': tag,
       'created_at': createdAt.millisecondsSinceEpoch,
     };
   }
@@ -84,6 +90,7 @@ class TransactionReview {
       referenceId: map['reference_id'] as String?,
       balance: (map['balance'] as num?)?.toDouble(),
       standardCategoryId: map['standard_category_id'] as String?,
+      tag: map['tag'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }
@@ -97,12 +104,14 @@ class MerchantRule {
     required this.merchant,
     required this.createdAt,
     this.standardCategoryId,
+    this.tag,
   });
 
   final String id;
   final String matchText;
   final String merchant;
   final String? standardCategoryId;
+  final String? tag;
   final DateTime createdAt;
 
   Map<String, dynamic> toMap() {
@@ -111,6 +120,7 @@ class MerchantRule {
       'match_text': matchText,
       'merchant': merchant,
       'standard_category_id': standardCategoryId,
+      'tag': tag,
       'created_at': createdAt.millisecondsSinceEpoch,
     };
   }
@@ -121,6 +131,7 @@ class MerchantRule {
       matchText: map['match_text'] as String,
       merchant: map['merchant'] as String,
       standardCategoryId: map['standard_category_id'] as String?,
+      tag: map['tag'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }

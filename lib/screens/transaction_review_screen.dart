@@ -160,19 +160,25 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
           matchText: draft.matchText,
           merchant: draft.merchant,
           standardCategoryId: review.standardCategoryId,
+          tag: draft.tag,
           createdAt: DateTime.now(),
         ),
       );
       await LocalStorageService.updateTransactionReviewMerchant(
         review.id,
         draft.merchant,
+        draft.tag,
       );
       if (!mounted) return;
       setState(() {
         _reviews = _reviews
             .map(
               (item) => item.id == review.id
-                  ? item.copyWith(merchant: draft.merchant)
+                  ? item.copyWith(
+                      merchant: draft.merchant,
+                      tag: draft.tag,
+                      clearTag: draft.tag == null,
+                    )
                   : item,
             )
             .toList();
@@ -196,6 +202,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
   ) async {
     final matchController = TextEditingController(text: review.merchant ?? '');
     final merchantController = TextEditingController(text: review.merchant ?? '');
+    final tagController = TextEditingController(text: review.tag ?? '');
     String? error;
 
     final result = await showDialog<_MerchantRuleDraft>(
@@ -219,6 +226,14 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
                 controller: merchantController,
                 decoration: const InputDecoration(labelText: 'Merchant name'),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: tagController,
+                decoration: const InputDecoration(
+                  labelText: 'Tag (optional)',
+                  hintText: 'For example: Dining',
+                ),
+              ),
               if (error != null) ...[
                 const SizedBox(height: 8),
                 Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -234,13 +249,18 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
               onPressed: () {
                 final matchText = matchController.text.trim();
                 final merchant = merchantController.text.trim();
+                final tag = tagController.text.trim();
                 if (matchText.isEmpty || merchant.isEmpty) {
                   setDialogState(() => error = 'Enter both a match and merchant name.');
                   return;
                 }
                 Navigator.pop(
                   context,
-                  _MerchantRuleDraft(matchText: matchText, merchant: merchant),
+                  _MerchantRuleDraft(
+                    matchText: matchText,
+                    merchant: merchant,
+                    tag: tag.isEmpty ? null : tag,
+                  ),
                 );
               },
               child: const Text('Save'),
@@ -252,6 +272,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
 
     matchController.dispose();
     merchantController.dispose();
+    tagController.dispose();
     return result;
   }
 
@@ -443,8 +464,13 @@ class _EmptyReviewInbox extends StatelessWidget {
 }
 
 class _MerchantRuleDraft {
-  const _MerchantRuleDraft({required this.matchText, required this.merchant});
+  const _MerchantRuleDraft({
+    required this.matchText,
+    required this.merchant,
+    this.tag,
+  });
 
   final String matchText;
   final String merchant;
+  final String? tag;
 }

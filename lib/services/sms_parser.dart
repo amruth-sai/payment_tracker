@@ -431,6 +431,7 @@ class SmsParser {
       isUserCorrected: true,
       category: category,
       standardCategoryId: review.standardCategoryId,
+      tag: review.tag,
     );
   }
 

@@ -306,6 +306,7 @@ class SmsService extends ChangeNotifier {
             merchant: merchantRule?.merchant,
             category: category,
             standardCategoryId: standardCategoryId,
+            tag: merchantRule?.tag,
             clearCategory: category == null,
           );
           newTransactions.add(categorizedTx);
@@ -318,6 +319,7 @@ class SmsService extends ChangeNotifier {
               review.copyWith(
                 merchant: merchantRule?.merchant,
                 standardCategoryId: merchantRule?.standardCategoryId,
+                tag: merchantRule?.tag,
               ),
             );
           }

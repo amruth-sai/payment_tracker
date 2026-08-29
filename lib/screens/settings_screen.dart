@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/salary_cycle.dart';
+import 'merchant_rules_screen.dart';
 import '../services/local_storage_service.dart';
 import '../services/transaction_export_service.dart';
 
@@ -63,6 +64,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const Text(
                           'Payment messages are parsed and stored only on this device. '
                           'No AI service or API key is used.',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Merchant Cleanup Rules',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Normalize a matching SMS to one merchant, category, and tag. '
+                          'You can also apply a rule to transactions already saved.',
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const MerchantRulesScreen(),
+                              ),
+                            ),
+                            icon: const Icon(Icons.auto_fix_high_outlined),
+                            label: const Text('Manage Merchant Rules'),
+                          ),
                         ),
                       ],
                     ),
