@@ -16,7 +16,9 @@ class TransactionReview {
     this.referenceId,
     this.balance,
     this.standardCategoryId,
+    this.categorySource,
     this.tag,
+    this.isIgnored = false,
   });
 
   final String id;
@@ -30,14 +32,18 @@ class TransactionReview {
   final String? referenceId;
   final double? balance;
   final String? standardCategoryId;
+  final String? categorySource;
   final String? tag;
+  final bool isIgnored;
   final DateTime createdAt;
 
   TransactionReview copyWith({
     String? merchant,
     String? standardCategoryId,
+    String? categorySource,
     String? tag,
     bool clearTag = false,
+    bool? isIgnored,
   }) {
     return TransactionReview(
       id: id,
@@ -51,7 +57,9 @@ class TransactionReview {
       referenceId: referenceId,
       balance: balance,
       standardCategoryId: standardCategoryId ?? this.standardCategoryId,
+      categorySource: categorySource ?? this.categorySource,
       tag: clearTag ? null : (tag ?? this.tag),
+      isIgnored: isIgnored ?? this.isIgnored,
       createdAt: createdAt,
     );
   }
@@ -69,7 +77,9 @@ class TransactionReview {
       'reference_id': referenceId,
       'balance': balance,
       'standard_category_id': standardCategoryId,
+      'category_source': categorySource,
       'tag': tag,
+      'is_ignored': isIgnored ? 1 : 0,
       'created_at': createdAt.millisecondsSinceEpoch,
     };
   }
@@ -90,7 +100,9 @@ class TransactionReview {
       referenceId: map['reference_id'] as String?,
       balance: (map['balance'] as num?)?.toDouble(),
       standardCategoryId: map['standard_category_id'] as String?,
+      categorySource: map['category_source'] as String?,
       tag: map['tag'] as String?,
+      isIgnored: (map['is_ignored'] as int?) == 1,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }
@@ -105,6 +117,7 @@ class MerchantRule {
     required this.createdAt,
     this.standardCategoryId,
     this.tag,
+    this.isEnabled = true,
   });
 
   final String id;
@@ -113,6 +126,17 @@ class MerchantRule {
   final String? standardCategoryId;
   final String? tag;
   final DateTime createdAt;
+  final bool isEnabled;
+
+  MerchantRule copyWith({bool? isEnabled}) => MerchantRule(
+        id: id,
+        matchText: matchText,
+        merchant: merchant,
+        standardCategoryId: standardCategoryId,
+        tag: tag,
+        createdAt: createdAt,
+        isEnabled: isEnabled ?? this.isEnabled,
+      );
 
   Map<String, dynamic> toMap() {
     return {
@@ -122,6 +146,7 @@ class MerchantRule {
       'standard_category_id': standardCategoryId,
       'tag': tag,
       'created_at': createdAt.millisecondsSinceEpoch,
+      'is_enabled': isEnabled ? 1 : 0,
     };
   }
 
@@ -133,6 +158,7 @@ class MerchantRule {
       standardCategoryId: map['standard_category_id'] as String?,
       tag: map['tag'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+      isEnabled: (map['is_enabled'] as int?) != 0,
     );
   }
 }

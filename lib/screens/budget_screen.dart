@@ -12,6 +12,7 @@ import '../services/sms_service.dart';
 import '../utils/date_utils.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
+import 'outside_budget_transactions_screen.dart';
 
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
@@ -23,6 +24,7 @@ class BudgetScreen extends StatefulWidget {
 class _BudgetScreenState extends State<BudgetScreen> {
   List<BudgetStatus> _statuses = [];
   List<StandardCategory> _standardCategories = [];
+  List<Transaction> _outsideBudgetTransactions = [];
   bool _isLoading = true;
   double _monthlyIncome = 0;
   SmsService? _smsService;
@@ -68,10 +70,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
 
     final incomeStr = await LocalStorageService.getSetting('monthly_income');
-    final categories = await LocalStorageService.getAllStandardCategories();
+    final categories = await BudgetService.loadBudgetCategories();
 
     _monthlyIncome = double.tryParse(incomeStr ?? '') ?? 0;
-    _standardCategories = categories;
+    _standardCategories = categories.values.toList();
 
     await _refreshStatuses(
       useProviderTransactions: true,
@@ -100,10 +102,19 @@ class _BudgetScreenState extends State<BudgetScreen> {
       start: activePeriod.start,
       end: activePeriod.end,
     );
+    final budgets = await LocalStorageService.getAllBudgets();
+    final outside = BudgetService.outsideBudgetTransactions(
+      transactions: baseTransactions,
+      budgetCategoryIds:
+          budgets.map((budget) => budget.standardCategoryId).toSet(),
+      start: activePeriod.start,
+      end: activePeriod.end,
+    );
 
     if (!mounted) return;
     setState(() {
       _statuses = statuses;
+      _outsideBudgetTransactions = outside;
       _isLoading = false;
     });
   }
@@ -150,6 +161,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     _buildEmptyState()
                   else
                     ..._statuses.map(_buildBudgetCard),
+                  _buildOutsideBudgetsCard(),
                 ],
               ),
             ),
@@ -222,8 +234,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   avatar: period.isCurrent
                       ? const Icon(Icons.circle, size: 8, color: Colors.green)
                       : null,
-                  label: Text(period.label,
-                      style: const TextStyle(fontSize: 12)),
+                  label:
+                      Text(period.label, style: const TextStyle(fontSize: 12)),
                   selected: _selectedPeriod?.id == period.id,
                   onSelected: (_) => _selectPeriod(period),
                 ),
@@ -288,8 +300,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       monthStarts[_monthKey(start)] = start;
     }
 
-    final starts = monthStarts.values.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final starts = monthStarts.values.toList()..sort((a, b) => b.compareTo(a));
 
     return starts
         .map(
@@ -317,7 +328,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
     );
   }
 
-  _BudgetPeriod get _activePeriod => _selectedPeriod ??
+  _BudgetPeriod get _activePeriod =>
+      _selectedPeriod ??
       (_periods.isNotEmpty ? _periods.first : _fallbackMonthlyPeriod());
 
   _BudgetPeriod _fallbackMonthlyPeriod() {
@@ -348,8 +360,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   String _formatRange(DateTime start, DateTime end) {
-    final startLabel =
-        '${start.day} ${AppDateUtils.months[start.month - 1]}';
+    final startLabel = '${start.day} ${AppDateUtils.months[start.month - 1]}';
     final endLabel =
         '${end.day} ${AppDateUtils.months[end.month - 1]} ${end.year}';
     return '$startLabel - $endLabel';
@@ -380,6 +391,68 @@ class _BudgetScreenState extends State<BudgetScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildOutsideBudgetsCard() {
+    final transactions = _outsideBudgetTransactions;
+    final total = transactions.fold<double>(0, (sum, tx) => sum + tx.amount);
+    final categoriesById = _standardCategoriesById;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Outside your budgets',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(transactions.isEmpty
+                ? 'No uncovered spending in ${_activePeriod.label}.'
+                : '${transactions.length} spending transactions · '
+                    '\u20B9${_fmt(total)} in ${_activePeriod.label}'),
+            if (transactions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...transactions.take(3).map((tx) {
+                final categoryId = BudgetService.categoryIdForTransaction(tx);
+                final category = categoriesById[categoryId];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(tx.displayName,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(categoryId == 'uncategorized'
+                      ? 'Needs category'
+                      : category?.displayName ?? 'Category not found'),
+                  trailing: Text('\u20B9${_fmt(tx.amount)}'),
+                );
+              }),
+            ],
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _showOutsideBudgetTransactions,
+              icon: const Icon(Icons.rule_folder_outlined),
+              label: const Text('View and categorize transactions'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showOutsideBudgetTransactions() async {
+    final period = _activePeriod;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutsideBudgetTransactionsScreen(
+          periodLabel: period.label,
+          periodStart: period.start,
+          periodEnd: period.end,
+        ),
+      ),
+    );
+    if (mounted) await _loadData();
   }
 
   Widget _buildBudgetCard(BudgetStatus status) {
@@ -828,10 +901,9 @@ class _BudgetCategoryTransactionsSheetState
     final end = widget.period.end;
     return transactions
         .where((tx) => !tx.date.isBefore(start) && !tx.date.isAfter(end))
-        .where((tx) => tx.isDebit)
+        .where(BudgetService.isBudgetExpense)
         .where((tx) {
-      final categoryId = tx.effectiveStandardCategoryId ??
-          TransactionCategory.uncategorized.standardCategoryId;
+      final categoryId = BudgetService.categoryIdForTransaction(tx);
       return categoryId == _categoryId;
     }).toList()
       ..sort((a, b) => b.date.compareTo(a.date));

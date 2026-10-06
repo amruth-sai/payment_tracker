@@ -8,6 +8,7 @@ import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
+import 'ignored_messages_screen.dart';
 
 class IgnoredTransactionsScreen extends StatefulWidget {
   const IgnoredTransactionsScreen({super.key});
@@ -38,7 +39,21 @@ class _IgnoredTransactionsScreenState extends State<IgnoredTransactionsScreen> {
   }
 
   Future<void> _restoreTransaction(Transaction tx) async {
-    await LocalStorageService.updateTransactionIgnored(tx.id, false);
+    if (tx.transferPartnerId != null) {
+      final all = await LocalStorageService.getAllTransactions();
+      final partners = all.where((item) => item.id == tx.transferPartnerId).toList();
+      if (partners.isNotEmpty && partners.first.isIgnored &&
+          partners.first.transferGroupId == tx.transferGroupId) {
+        await LocalStorageService.updateTransactionsAtomic([
+          tx.copyWith(isIgnored: false),
+          partners.first.copyWith(isIgnored: false),
+        ]);
+      } else {
+        await LocalStorageService.updateTransactionIgnored(tx.id, false);
+      }
+    } else {
+      await LocalStorageService.updateTransactionIgnored(tx.id, false);
+    }
     if (!mounted) return;
 
     context.read<SmsService>().reloadFromCache();
@@ -56,6 +71,16 @@ class _IgnoredTransactionsScreenState extends State<IgnoredTransactionsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ignored Transactions'),
+        actions: [
+          IconButton(
+            tooltip: 'Message decisions',
+            icon: const Icon(Icons.sms_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const IgnoredMessagesScreen()),
+            ),
+          ),
+        ],
       ),
       body: FutureBuilder<List<Transaction>>(
         future: _ignoredFuture,
@@ -128,7 +153,11 @@ class _IgnoredTransactionsScreenState extends State<IgnoredTransactionsScreen> {
                         accountDisplayName: context
                             .read<SmsService>()
                             .getAccountDisplayName(tx.accountId, tx.accountLast4),
-                        onTap: () => TransactionDetailSheet.show(context, tx),
+                        onTap: () => TransactionDetailSheet.show(
+                          context,
+                          tx,
+                          onUpdated: (_) => setState(_reload),
+                        ),
                       ),
                       Align(
                         alignment: Alignment.centerRight,

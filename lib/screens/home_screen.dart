@@ -82,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Consumer<SmsService>(
         builder: (context, sms, _) {
-          if (sms.isLoading) {
+          if (sms.isLoading && sms.transactions.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -122,6 +122,18 @@ class _HomeScreenState extends State<HomeScreen> {
             child: CustomScrollView(
               slivers: [
                 _buildAppBar(context),
+                if (sms.isLoading)
+                  SliverToBoxAdapter(
+                    child: Column(
+                      children: [
+                        const LinearProgressIndicator(minHeight: 2),
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Text(sms.loadingStatus),
+                        ),
+                      ],
+                    ),
+                  ),
                 SliverToBoxAdapter(child: _buildQuickActions()),
                 SliverToBoxAdapter(
                   child: SummaryCard(

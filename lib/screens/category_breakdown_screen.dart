@@ -3,7 +3,8 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
-import '../services/category_service.dart';
+import '../models/standard_category.dart';
+import '../models/custom_category.dart';
 import '../services/local_storage_service.dart';
 
 class CategoryBreakdownScreen extends StatefulWidget {
@@ -15,8 +16,11 @@ class CategoryBreakdownScreen extends StatefulWidget {
 }
 
 class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
-  Map<TransactionCategory, double> _categoryTotals = {};
-  Map<TransactionCategory, int> _categoryCounts = {};
+  Map<String, double> _categoryTotals = {};
+  Map<String, int> _categoryCounts = {};
+  Map<String, StandardCategory> _standardCategories = {};
+  Map<String, CustomCategory> _customCategories = {};
+  List<Transaction> _periodTransactions = [];
   bool _isLoading = true;
   String _period = '30d';
   int? _touchedIndex;
@@ -31,7 +35,9 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    var transactions = await LocalStorageService.getAllTransactions();
+    var transactions = await LocalStorageService.getTrackedTransactions();
+    final standardCategories = await LocalStorageService.getAllStandardCategories();
+    final customCategories = await LocalStorageService.getAllCustomCategories();
 
     // Filter by period
     final now = DateTime.now();
@@ -41,29 +47,11 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
       transactions = transactions.where((t) => t.date.isAfter(cutoff)).toList();
     }
 
-    // Auto-categorize uncategorized transactions
-    final updates = <String, TransactionCategory>{};
-    transactions = transactions.map((tx) {
-      if (tx.category == null || tx.category == TransactionCategory.uncategorized) {
-        final cat = CategoryService.categorize(tx);
-        if (cat != TransactionCategory.uncategorized) {
-          updates[tx.id] = cat;
-        }
-        return tx.copyWith(category: cat);
-      }
-      return tx;
-    }).toList();
-
-    // Persist categorizations
-    if (updates.isNotEmpty) {
-      await LocalStorageService.batchUpdateCategories(updates);
-    }
-
     // Sum debits by category
-    final totals = <TransactionCategory, double>{};
-    final counts = <TransactionCategory, int>{};
+    final totals = <String, double>{};
+    final counts = <String, int>{};
     for (final tx in transactions.where((t) => t.isDebit)) {
-      final cat = tx.category ?? TransactionCategory.uncategorized;
+      final cat = _categoryId(tx);
       totals[cat] = (totals[cat] ?? 0) + tx.amount;
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
@@ -73,6 +61,9 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
         totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
       );
       _categoryCounts = counts;
+      _standardCategories = {for (final category in standardCategories) category.id: category};
+      _customCategories = {for (final category in customCategories) category.id: category};
+      _periodTransactions = transactions;
       _isLoading = false;
     });
   }
@@ -158,7 +149,7 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
           final entry = entries[i];
           final pct = total > 0 ? (entry.value / total * 100) : 0.0;
           return PieChartSectionData(
-            color: _getCategoryColor(entry.key),
+            color: _categoryColor(entry.key),
             value: entry.value,
             title: pct >= 5 ? '${pct.toStringAsFixed(0)}%' : '',
             radius: isTouched ? 60 : 50,
@@ -185,15 +176,15 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
         final amount = entries[i].value;
         final count = _categoryCounts[cat] ?? 0;
         final pct = total > 0 ? (amount / total * 100) : 0.0;
-        final color = _getCategoryColor(cat);
+        final color = _categoryColor(cat);
 
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: color.withValues(alpha: 0.2),
-            child: Text(cat.emoji, style: const TextStyle(fontSize: 18)),
+            child: Text(_categoryEmoji(cat), style: const TextStyle(fontSize: 18)),
           ),
           title: Text(
-            cat.displayName,
+            _categoryName(cat),
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           subtitle: Column(
@@ -232,10 +223,9 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
     );
   }
 
-  void _showCategoryTransactions(TransactionCategory category) async {
-    final all = await LocalStorageService.getAllTransactions();
-    final txs = all
-        .where((t) => t.isDebit && (t.category ?? TransactionCategory.uncategorized) == category)
+  void _showCategoryTransactions(String category) async {
+    final txs = _periodTransactions
+        .where((t) => t.isDebit && _categoryId(t) == category)
         .toList();
     if (!mounted) return;
     showModalBottomSheet(
@@ -250,9 +240,9 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Text(category.emoji, style: const TextStyle(fontSize: 24)),
+                  Text(_categoryEmoji(category), style: const TextStyle(fontSize: 24)),
                   const SizedBox(width: 8),
-                  Text(category.displayName,
+                  Text(_categoryName(category),
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   IconButton(
@@ -286,26 +276,26 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
     );
   }
 
-  Color _getCategoryColor(TransactionCategory cat) {
-    const colors = {
-      TransactionCategory.foodDining: Colors.orange,
-      TransactionCategory.travelTransport: Colors.blue,
-      TransactionCategory.shopping: Colors.purple,
-      TransactionCategory.rentHousing: Colors.brown,
-      TransactionCategory.emiLoans: Colors.red,
-      TransactionCategory.entertainment: Colors.pink,
-      TransactionCategory.billsUtilities: Colors.teal,
-      TransactionCategory.healthMedical: Colors.green,
-      TransactionCategory.education: Colors.indigo,
-      TransactionCategory.salaryIncome: Colors.lightGreen,
-      TransactionCategory.transfer: Colors.blueGrey,
-      TransactionCategory.cashback: Colors.amber,
-      TransactionCategory.investment: Colors.cyan,
-      TransactionCategory.other: Colors.grey,
-      TransactionCategory.uncategorized: Colors.grey,
-    };
-    return colors[cat] ?? Colors.grey;
+  String _categoryId(Transaction tx) => tx.customCategoryId == null
+      ? (tx.effectiveStandardCategoryId ?? 'uncategorized')
+      : 'custom:${tx.customCategoryId}';
+
+  String _categoryName(String id) {
+    if (id.startsWith('custom:')) {
+      return _customCategories[id.substring(7)]?.name ?? 'Custom category';
+    }
+    return _standardCategories[id]?.displayName ??
+        TransactionCategory.fromStandardCategoryId(id)?.displayName ??
+        'Uncategorized';
   }
+
+  String _categoryEmoji(String id) => id.startsWith('custom:')
+      ? (_customCategories[id.substring(7)]?.emoji ?? '🏷️')
+      : (_standardCategories[id]?.emoji ?? '❓');
+
+  Color _categoryColor(String id) => id.startsWith('custom:')
+      ? Color(_customCategories[id.substring(7)]?.colorValue ?? Colors.grey.toARGB32())
+      : (_standardCategories[id]?.color ?? Colors.grey);
 
   String _fmt(double v) {
     if (v >= 100000) return '${(v / 100000).toStringAsFixed(2)}L';

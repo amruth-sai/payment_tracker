@@ -26,7 +26,7 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
   }
 
   Future<void> _loadAllTransactions() async {
-    _allTransactions = await LocalStorageService.getAllTransactions();
+    _allTransactions = await LocalStorageService.getTrackedTransactions();
     _computeMonth();
   }
 

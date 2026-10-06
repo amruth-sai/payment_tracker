@@ -78,6 +78,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 16),
                 Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.category_outlined),
+                    title: const Text('Refresh automatic categories'),
+                    subtitle: const Text(
+                      'Preview new rule matches before updating automatic labels. '
+                      'Your category choices stay in place.',
+                    ),
+                    onTap: _refreshAutomaticCategories,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -239,12 +251,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
-                            onPressed: _clearCache,
-                            icon: const Icon(Icons.delete_sweep),
-                            label: const Text('Clear Cache & Re-parse All'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
+                            onPressed: _recheckSkippedMessages,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Recheck Skipped Messages'),
                           ),
                         ),
                       ],
@@ -276,42 +285,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _clearCache() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear Cache?'),
-        content: const Text(
-          'This deletes cached transactions and processes your SMS messages again.',
+  Future<void> _recheckSkippedMessages() async {
+    try {
+      await context.read<SmsService>().recheckSkippedMessages();
+      await _loadCacheStats();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Skipped messages checked again.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to recheck messages.')),
+      );
+    }
+  }
+
+  Future<void> _refreshAutomaticCategories() async {
+    try {
+      final changes = await LocalStorageService.previewAutomaticCategories();
+      if (!mounted) return;
+      if (changes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Automatic categories are up to date.')),
+        );
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Update ${changes.length} categories?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Only automatic and merchant rule categories will change.'),
+                const SizedBox(height: 12),
+                ...changes.take(5).map((change) => Text(
+                  '${change.merchant}: ${change.oldCategoryId ?? 'none'} → '
+                  '${change.assignment.categoryId} (${change.assignment.source})',
+                )),
+                if (changes.length > 5) Text('And ${changes.length - 5} more…'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Update'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    await LocalStorageService.clearAll();
-    await LocalStorageService.setOnboardingCompleted(false);
-    await LocalStorageService.setTrackFromDate(null);
-    await LocalStorageService.setTrackFromTransactionId(null);
-    await _loadCacheStats();
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Cache cleared. Return home to set up tracking.'),
-      ),
-    );
+      );
+      if (confirmed != true || !mounted) return;
+      await LocalStorageService.applyAutomaticCategories(changes);
+      if (!mounted) return;
+      await context.read<SmsService>().reloadFromCache();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${changes.length} categories updated.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update categories.')),
+      );
+    }
   }
 
   Future<void> _exportTransactions() async {

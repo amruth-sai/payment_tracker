@@ -1,18 +1,18 @@
 // lib/services/sms_service.dart
 
 import 'package:flutter/foundation.dart';
-import 'package:another_telephony/telephony.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/transaction.dart';
 import '../models/transaction_review.dart';
+import '../models/sms_processing_record.dart';
 import '../models/account.dart';
 import '../models/salary_cycle.dart';
-import 'sms_parser.dart';
 import 'local_storage_service.dart';
-import 'category_service.dart';
+import 'sms_reader.dart';
+import 'sms_processing_service.dart';
 
 class SmsService extends ChangeNotifier {
-  final Telephony _telephony = Telephony.instance;
+  final SmsReader _reader = SmsReader();
 
   List<Transaction> _transactions = [];
   List<Account> _accounts = [];
@@ -179,8 +179,12 @@ class SmsService extends ChangeNotifier {
   }
 
   /// Load transactions - uses cache first, then parses only new SMS
-  Future<void> loadTransactions(
-      {int daysBack = 90, bool forceRefresh = false}) async {
+  Future<void> loadTransactions({
+    int? daysBack,
+    bool scanFromBeginning = false,
+  }) async {
+    if (_isLoading) return;
+    final scanStartedAt = DateTime.now();
     _isLoading = true;
     _error = null;
     _ruleParsedCount = 0;
@@ -191,22 +195,20 @@ class SmsService extends ChangeNotifier {
 
     try {
       // Step 1: Load cached transactions first (instant display!)
-      if (!forceRefresh) {
-        final cached = await _getFilteredTransactions();
-        if (cached.isNotEmpty) {
-          _transactions = cached;
-          _cachedCount = cached.length;
-          _loadingStatus = 'Found $_cachedCount cached transactions';
-          notifyListeners();
-        }
+      final cached = await _getFilteredTransactions();
+      if (cached.isNotEmpty) {
+        _transactions = cached;
+        _cachedCount = cached.length;
+        _loadingStatus = 'Found $_cachedCount cached transactions';
+        notifyListeners();
       }
 
       // Step 2: Request SMS permission
       _loadingStatus = 'Checking permissions...';
       notifyListeners();
 
-      final granted = await _telephony.requestPhoneAndSmsPermissions;
-      if (granted == null || !granted) {
+      final granted = await requestPermission();
+      if (!granted) {
         _error = 'SMS permission denied. Please grant it in Settings.';
         _isLoading = false;
         notifyListeners();
@@ -220,44 +222,25 @@ class SmsService extends ChangeNotifier {
 
       final processedIds = await LocalStorageService.getProcessedSmsIds();
 
-      final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-      final cutoffMs = cutoff.millisecondsSinceEpoch;
-
-      // Step 4: Fetch SMS from inbox
-      final inbox = await _telephony.getInboxSms(
-        columns: [
-          SmsColumn.ADDRESS,
-          SmsColumn.BODY,
-          SmsColumn.DATE,
-          SmsColumn.ID
-        ],
-        filter:
-            SmsFilter.where(SmsColumn.DATE).greaterThan(cutoffMs.toString()),
-        sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
-      );
-
-      final sent = await _telephony.getSentSms(
-        columns: [
-          SmsColumn.ADDRESS,
-          SmsColumn.BODY,
-          SmsColumn.DATE,
-          SmsColumn.ID
-        ],
-        filter:
-            SmsFilter.where(SmsColumn.DATE).greaterThan(cutoffMs.toString()),
-        sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
-      );
-
-      final allSms = [...inbox, ...sent];
+      final lastScanAt = await LocalStorageService.getLastSmsScanAt();
+      final cutoff = daysBack != null
+          ? scanStartedAt.subtract(Duration(days: daysBack))
+          : scanFromBeginning || lastScanAt == null
+              ? null
+              : lastScanAt.subtract(const Duration(days: 2));
+      final allSms = await _reader.read(after: cutoff);
 
       // Step 5: Filter out already processed SMS
-      final newSms = allSms.where((sms) {
-        final id = sms.id?.toString() ?? '';
+      final newSms = allSms.where((item) {
+        final id = item.message.id?.toString() ?? '';
         return id.isNotEmpty && !processedIds.contains(id);
       }).toList();
 
       if (newSms.isEmpty) {
         _loadingStatus = 'No new messages to process';
+        await LocalStorageService.setLastSmsScanAt(scanStartedAt);
+        await _loadAccounts();
+        await _loadCurrentCycle();
         _isLoading = false;
         notifyListeners();
         return;
@@ -269,12 +252,35 @@ class SmsService extends ChangeNotifier {
       // Step 6: Parse only new SMS. Writes are batched after parsing so a
       // large inbox does not pay a database round-trip for every message.
       final newTransactions = <Transaction>[];
-      final reviewCandidates = <TransactionReview>[];
-      final transactionIds = <String>[];
-      final nonTransactionIds = <String>[];
+      final pendingTransactions = <Transaction>[];
+      final pendingReviews = <TransactionReview>[];
+      final pendingRecords = <SmsProcessingRecord>[];
+      final seenSmsIds = <String>{};
+      final processor = SmsProcessingService(
+        merchantRules: await LocalStorageService.getMerchantRules(
+          enabledOnly: true,
+        ),
+      );
+
+      Future<void> flushPending() async {
+        if (pendingRecords.isEmpty) return;
+        await LocalStorageService.saveScanResults(
+          transactions: pendingTransactions,
+          reviews: pendingReviews,
+          records: pendingRecords,
+        );
+        pendingTransactions.clear();
+        pendingReviews.clear();
+        pendingRecords.clear();
+      }
 
       for (int i = 0; i < newSms.length; i++) {
-        final sms = newSms[i];
+        if (i > 0 && i % 100 == 0) {
+          _loadingStatus = 'Processing $i of ${newSms.length} messages...';
+          notifyListeners();
+        }
+        final item = newSms[i];
+        final sms = item.message;
         final sender = sms.address ?? '';
         final body = sms.body ?? '';
         final dateMs = int.tryParse(sms.date?.toString() ?? '0') ?? 0;
@@ -283,67 +289,27 @@ class SmsService extends ChangeNotifier {
         if (id == null || id.isEmpty) {
           continue;
         }
+        if (!seenSmsIds.add(id)) continue;
 
-        Transaction? tx;
-        TransactionReview? review;
-        if (SmsParser.isBankSms(sender)) {
-          tx = await SmsParser.parse(body, sender, date, id);
-          if (tx != null) {
-            _ruleParsedCount++;
-          } else {
-            review = SmsParser.buildReviewCandidate(body, sender, date, id);
-          }
-        }
-
-        if (tx != null) {
-          final merchantRule =
-              await LocalStorageService.getMatchingMerchantRule(body);
-          final standardCategoryId = merchantRule?.standardCategoryId ??
-              CategoryService.categorizeStandardCategoryId(tx);
-          final category =
-              TransactionCategory.fromStandardCategoryId(standardCategoryId);
-          final categorizedTx = tx.copyWith(
-            merchant: merchantRule?.merchant,
-            category: category,
-            standardCategoryId: standardCategoryId,
-            tag: merchantRule?.tag,
-            clearCategory: category == null,
-          );
-          newTransactions.add(categorizedTx);
-          transactionIds.add(id);
-        } else {
-          if (review != null) {
-            final merchantRule =
-                await LocalStorageService.getMatchingMerchantRule(body);
-            reviewCandidates.add(
-              review.copyWith(
-                merchant: merchantRule?.merchant,
-                standardCategoryId: merchantRule?.standardCategoryId,
-                tag: merchantRule?.tag,
-              ),
-            );
-          }
-          // Mark as processed but not a transaction
-          nonTransactionIds.add(id);
-        }
-      }
-
-      if (newTransactions.isNotEmpty) {
-        await LocalStorageService.saveTransactions(newTransactions);
-        await LocalStorageService.markSmsListAsProcessed(
-          transactionIds,
-          isTransaction: true,
+        final result = await processor.process(
+          id: id,
+          sender: sender,
+          body: body,
+          date: date,
+          isSent: item.isSent,
         );
+        if (result.transaction != null) {
+          newTransactions.add(result.transaction!);
+          pendingTransactions.add(result.transaction!);
+          _ruleParsedCount++;
+        }
+        if (result.review != null) pendingReviews.add(result.review!);
+        pendingRecords.add(result.record);
+        if (pendingRecords.length >= 250) await flushPending();
       }
 
-      if (reviewCandidates.isNotEmpty) {
-        await LocalStorageService.saveTransactionReviews(reviewCandidates);
-      }
-
-      // Mark non-transaction SMS as processed in batch.
-      if (nonTransactionIds.isNotEmpty) {
-        await LocalStorageService.markSmsListAsProcessed(nonTransactionIds);
-      }
+      await flushPending();
+      await LocalStorageService.setLastSmsScanAt(scanStartedAt);
 
       _newlyParsedCount = newTransactions.length;
       _newlyFoundTransactions = List.unmodifiable(newTransactions); // Feature 6
@@ -365,12 +331,14 @@ class SmsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Force re-parse all SMS (ignores cache)
-  Future<void> forceReparse({int daysBack = 90}) async {
-    // Clear all cached data
-    await LocalStorageService.clearAll();
-    // Reload everything
-    await loadTransactions(daysBack: daysBack, forceRefresh: true);
+  /// Recheck SMS without deleting user edits or ignored decisions. Previously
+  /// processed messages remain immutable; new parsing rules apply to new SMS.
+  Future<void> recheckSkippedMessages({int? daysBack}) async {
+    if (_isLoading) {
+      throw StateError('A message scan is already running.');
+    }
+    await LocalStorageService.prepareSkippedMessagesForRescan();
+    await loadTransactions(daysBack: daysBack, scanFromBeginning: true);
   }
 
   /// Get storage statistics

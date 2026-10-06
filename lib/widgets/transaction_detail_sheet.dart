@@ -952,6 +952,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           final updated = _tx.copyWith(
             category: legacyCategory,
             standardCategoryId: category.id,
+            categorySource: 'user',
             clearCategory: legacyCategory == null,
           );
           setState(() {
@@ -985,6 +986,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           final updated = _tx.copyWith(
             clearStandardCategory: true,
             clearCategory: true,
+            categorySource: 'user',
           );
           setState(() {
             _tx = updated;

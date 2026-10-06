@@ -33,7 +33,7 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final allTx = await LocalStorageService.getAllTransactions();
+    final allTx = await LocalStorageService.getTrackedTransactions();
     final cutoff = DateTime.now().subtract(Duration(days: _periodDays));
 
     final Map<String, _MerchantStat> map = {};

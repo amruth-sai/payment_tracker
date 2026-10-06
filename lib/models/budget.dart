@@ -4,6 +4,7 @@ import 'standard_category.dart';
 import 'transaction.dart';
 
 class Budget {
+  static const customCategoryPrefix = 'custom:';
   final String id;
   final String standardCategoryId;
   final double monthlyLimit;

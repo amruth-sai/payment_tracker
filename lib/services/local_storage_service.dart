@@ -14,6 +14,9 @@ import '../models/standard_category.dart';
 import '../models/category_preferences.dart';
 import '../models/local_backup.dart';
 import '../models/transaction_review.dart';
+import '../models/merchant_rule_suggestion.dart';
+import '../models/sms_processing_record.dart';
+import 'category_service.dart';
 import '../constants/transfer_constants.dart';
 
 /// Local SQLite database for caching parsed transactions
@@ -21,7 +24,7 @@ import '../constants/transfer_constants.dart';
 class LocalStorageService {
   static Database? _db;
   static const String _dbName = 'payment_tracker.db';
-  static const int _dbVersion = 10; // v10: tags on merchant cleanup rules
+  static const int _dbVersion = 12;
 
   static const _backupExcludedTables = {'android_metadata'};
 
@@ -39,7 +42,9 @@ class LocalStorageService {
         reference_id TEXT,
         balance REAL,
         standard_category_id TEXT,
+        category_source TEXT,
         tag TEXT,
+        is_ignored INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -51,7 +56,8 @@ class LocalStorageService {
         merchant TEXT NOT NULL,
         standard_category_id TEXT,
         tag TEXT,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        is_enabled INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -61,6 +67,17 @@ class LocalStorageService {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_merchant_rules_match ON merchant_rules(match_text)',
     );
+  }
+
+  static Future<void> _seedSuggestedMerchantRules(Database db) async {
+    final createdAt = DateTime.now();
+    for (final suggestion in MerchantRuleSuggestions.all) {
+      await db.insert(
+        'merchant_rules',
+        suggestion.toRule(createdAt).toMap(),
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
   }
 
   static String? _legacyCategoryNameForStandardCategoryId(
@@ -195,7 +212,8 @@ class LocalStorageService {
         'standard_category_id': standardCategoryId,
         'category': null,
       },
-      where: '($whereClause) AND COALESCE(is_user_corrected, 0) = 0',
+      where: '''($whereClause) AND COALESCE(is_user_corrected, 0) = 0
+          AND COALESCE(category_source, 'legacy') = 'auto' ''',
       whereArgs: whereArgs,
     );
   }
@@ -225,6 +243,7 @@ class LocalStorageService {
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
         await _syncStandardCategoryCatalog(db);
+        await _seedSuggestedMerchantRules(db);
       },
     );
   }
@@ -255,6 +274,11 @@ class LocalStorageService {
         is_ignored INTEGER DEFAULT 0,
         custom_category_id TEXT,
         standard_category_id TEXT,
+        category_source TEXT,
+        transfer_group_id TEXT,
+        transfer_partner_id TEXT,
+        is_transfer_source INTEGER DEFAULT 0,
+        is_transfer_destination INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -520,6 +544,8 @@ class LocalStorageService {
     }
 
     await _createTransactionReviewTables(db);
+    await _seedSuggestedMerchantRules(db);
+    await _createSmsProcessingTable(db);
 
     // Indexes for faster lookups
     await db.execute(
@@ -534,6 +560,12 @@ class LocalStorageService {
         'CREATE INDEX idx_transactions_category ON transactions(category)');
     await db.execute(
         'CREATE INDEX idx_transactions_standard_category ON transactions(standard_category_id)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_ignored ON transactions(is_ignored)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_transfer_group ON transactions(transfer_group_id)');
+    await db.execute(
+        'CREATE INDEX idx_transactions_transfer_partner ON transactions(transfer_partner_id)');
     await db.execute(
         'CREATE INDEX idx_standard_categories_active ON standard_categories(is_active)');
     await db.execute('CREATE INDEX idx_alerts_read ON alerts(is_read)');
@@ -886,6 +918,78 @@ class LocalStorageService {
       await db.execute('ALTER TABLE transaction_reviews ADD COLUMN tag TEXT');
       await db.execute('ALTER TABLE merchant_rules ADD COLUMN tag TEXT');
     }
+    if (oldVersion < 11) {
+      if (oldVersion >= 9) {
+        await db.execute(
+          'ALTER TABLE transaction_reviews ADD COLUMN is_ignored INTEGER NOT NULL DEFAULT 0',
+        );
+        await db.execute(
+          'ALTER TABLE transaction_reviews ADD COLUMN category_source TEXT',
+        );
+      }
+      await db
+          .execute('ALTER TABLE transactions ADD COLUMN category_source TEXT');
+      await db.execute('''
+        UPDATE transaction_reviews SET category_source = 'legacy'
+        WHERE standard_category_id IS NOT NULL
+      ''');
+      await db.execute('''
+        UPDATE transactions
+        SET category_source = CASE WHEN COALESCE(is_user_corrected, 0) = 0
+          THEN 'auto' ELSE 'legacy' END
+        WHERE standard_category_id IS NOT NULL
+      ''');
+      await _createSmsProcessingTable(db);
+      await _backfillSmsProcessing(db);
+    }
+    if (oldVersion < 12) {
+      if (oldVersion >= 9) {
+        await db.execute(
+          'ALTER TABLE merchant_rules ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1',
+        );
+      }
+      await _seedSuggestedMerchantRules(db);
+    }
+  }
+
+  static Future<void> _backfillSmsProcessing(Database db) async {
+    await db.execute('''
+        INSERT OR IGNORE INTO sms_processing
+          (sms_id, sender, date, outcome, reason, folder, raw_message, parser_version, updated_at)
+        SELECT p.sms_id,
+          COALESCE(t.sender, r.sender, ''),
+          COALESCE(t.date, r.date, p.processed_at),
+          CASE WHEN t.id IS NOT NULL THEN 'transaction'
+               WHEN r.id IS NOT NULL THEN 'needsReview' ELSE 'skipped' END,
+          CASE WHEN t.id IS NOT NULL THEN 'parsed_legacy'
+               WHEN r.id IS NOT NULL THEN 'direction_unclear'
+               ELSE 'legacy_unclassified' END,
+          'unknown',
+          NULL,
+          0, p.processed_at
+        FROM processed_sms p
+        LEFT JOIN transactions t ON t.sms_id = p.sms_id
+        LEFT JOIN transaction_reviews r ON r.id = p.sms_id
+      ''');
+  }
+
+  static Future<void> _createSmsProcessingTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sms_processing (
+        sms_id TEXT PRIMARY KEY,
+        sender TEXT NOT NULL,
+        date INTEGER NOT NULL,
+        outcome TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        folder TEXT NOT NULL DEFAULT 'unknown',
+        raw_message TEXT,
+        parser_version INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sms_processing_outcome_date ON sms_processing(outcome, date DESC)',
+    );
   }
 
   // ==================== BACKUP AND RESTORE ====================
@@ -921,16 +1025,18 @@ class LocalStorageService {
     final currentTables = await _backupTableNames(db);
     final backupTables = backup.tables.keys.toSet();
 
+    final requiredTables = backup.databaseVersion == _dbVersion
+        ? currentTables.toSet()
+        : {'transactions', 'processed_sms'};
     if (mode == BackupRestoreMode.replace &&
-        !currentTables.every(backupTables.contains)) {
+        !requiredTables.every(backupTables.contains)) {
       throw const FormatException(
         'This backup is missing data required for a safe replacement restore.',
       );
     }
 
-    final tablesToRestore = currentTables
-        .where(backupTables.contains)
-        .toList(growable: false);
+    final tablesToRestore =
+        currentTables.where(backupTables.contains).toList(growable: false);
     if (tablesToRestore.isEmpty) {
       throw const FormatException('This backup does not contain app data.');
     }
@@ -961,7 +1067,21 @@ class LocalStorageService {
       await db.execute('PRAGMA foreign_keys = ON');
     }
 
+    await db.execute('''
+      UPDATE transactions SET category_source =
+        CASE WHEN COALESCE(is_user_corrected, 0) = 0
+          THEN 'auto' ELSE 'legacy' END
+      WHERE category_source IS NULL AND standard_category_id IS NOT NULL
+    ''');
+    await db.execute('''
+      UPDATE transaction_reviews SET category_source = 'legacy'
+      WHERE category_source IS NULL AND standard_category_id IS NOT NULL
+    ''');
+    await _backfillSmsProcessing(db);
     await _syncStandardCategoryCatalog(db);
+    if (backup.databaseVersion < 12) {
+      await _seedSuggestedMerchantRules(db);
+    }
     return tablesToRestore.fold<int>(
       0,
       (count, table) => count + backup.tables[table]!.length,
@@ -1009,6 +1129,103 @@ class LocalStorageService {
     await batch.commit(noResult: true);
   }
 
+  /// Commits the result of an SMS scan as one unit. A message is never marked
+  /// processed without its transaction, review item, or skip reason.
+  static Future<void> saveScanResults({
+    required List<Transaction> transactions,
+    required List<TransactionReview> reviews,
+    required List<SmsProcessingRecord> records,
+  }) async {
+    if (records.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final transaction in transactions) {
+        batch.insert('transactions', _transactionValues(transaction),
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      for (final review in reviews) {
+        batch.insert('transaction_reviews', review.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final record in records) {
+        batch.insert('sms_processing', record.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert(
+            'processed_sms',
+            {
+              'sms_id': record.smsId,
+              'processed_at': now,
+              'is_transaction':
+                  record.outcome == SmsProcessingOutcome.transaction ? 1 : 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  static Future<List<SmsProcessingRecord>> getSkippedPaymentMessages() async {
+    final db = await database;
+    final rows = await db.query(
+      'sms_processing',
+      where: 'outcome = ? AND raw_message IS NOT NULL',
+      whereArgs: [SmsProcessingOutcome.skipped.name],
+      orderBy: 'date DESC',
+    );
+    return rows.map(SmsProcessingRecord.fromMap).toList();
+  }
+
+  static Future<int> countSkippedMessages() async {
+    final db = await database;
+    return Sqflite.firstIntValue(await db.rawQuery(
+          'SELECT COUNT(*) FROM sms_processing WHERE outcome = ?',
+          [SmsProcessingOutcome.skipped.name],
+        )) ??
+        0;
+  }
+
+  /// Allows a user to supply an amount when local rules could not read one.
+  /// The review inbox then collects the direction and optional category.
+  static Future<void> sendSkippedMessageToReview(
+    SmsProcessingRecord record,
+    double amount,
+  ) async {
+    if (record.rawMessage == null || amount <= 0) {
+      throw ArgumentError(
+          'A payment-like message and a positive amount are required.');
+    }
+    final db = await database;
+    final review = TransactionReview(
+      id: record.smsId,
+      amount: amount,
+      source: record.rawMessage!.toLowerCase().contains('upi')
+          ? PaymentSource.upi
+          : PaymentSource.bank,
+      sender: record.sender,
+      date: record.date,
+      rawMessage: record.rawMessage!,
+      createdAt: DateTime.now(),
+    );
+    await db.transaction((txn) async {
+      final updated = await txn.update(
+          'sms_processing',
+          {
+            'outcome': SmsProcessingOutcome.needsReview.name,
+            'reason': 'sent_to_review_by_user',
+            'raw_message': null,
+          },
+          where: 'sms_id = ? AND outcome = ?',
+          whereArgs: [record.smsId, SmsProcessingOutcome.skipped.name]);
+      if (updated != 1) {
+        throw StateError('This message is no longer skipped.');
+      }
+      await txn.insert('transaction_reviews', review.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort);
+    });
+  }
+
   // ==================== TRANSACTION REVIEW OPERATIONS ====================
 
   static Future<void> saveTransactionReviews(
@@ -1028,9 +1245,16 @@ class LocalStorageService {
     await batch.commit(noResult: true);
   }
 
-  static Future<List<TransactionReview>> getTransactionReviews() async {
+  static Future<List<TransactionReview>> getTransactionReviews({
+    bool ignored = false,
+  }) async {
     final db = await database;
-    final rows = await db.query('transaction_reviews', orderBy: 'date DESC');
+    final rows = await db.query(
+      'transaction_reviews',
+      where: 'is_ignored = ?',
+      whereArgs: [ignored ? 1 : 0],
+      orderBy: 'date DESC',
+    );
     return rows.map(TransactionReview.fromMap).toList();
   }
 
@@ -1041,7 +1265,7 @@ class LocalStorageService {
     final db = await database;
     await db.update(
       'transaction_reviews',
-      {'standard_category_id': standardCategoryId},
+      {'standard_category_id': standardCategoryId, 'category_source': 'user'},
       where: 'id = ?',
       whereArgs: [reviewId],
     );
@@ -1063,7 +1287,14 @@ class LocalStorageService {
 
   static Future<void> ignoreTransactionReview(String reviewId) async {
     final db = await database;
-    await db.delete('transaction_reviews', where: 'id = ?', whereArgs: [reviewId]);
+    await db.update('transaction_reviews', {'is_ignored': 1},
+        where: 'id = ?', whereArgs: [reviewId]);
+  }
+
+  static Future<void> restoreTransactionReview(String reviewId) async {
+    final db = await database;
+    await db.update('transaction_reviews', {'is_ignored': 0},
+        where: 'id = ?', whereArgs: [reviewId]);
   }
 
   static Future<void> resolveTransactionReview(
@@ -1082,6 +1313,16 @@ class LocalStorageService {
         where: 'id = ?',
         whereArgs: [reviewId],
       );
+      await txn.update(
+          'sms_processing',
+          {
+            'outcome': SmsProcessingOutcome.transaction.name,
+            'reason': 'confirmed_by_user',
+          },
+          where: 'sms_id = ?',
+          whereArgs: [reviewId]);
+      await txn.update('processed_sms', {'is_transaction': 1},
+          where: 'sms_id = ?', whereArgs: [reviewId]);
     });
   }
 
@@ -1094,9 +1335,15 @@ class LocalStorageService {
     );
   }
 
-  static Future<List<MerchantRule>> getMerchantRules() async {
+  static Future<List<MerchantRule>> getMerchantRules({
+    bool enabledOnly = false,
+  }) async {
     final db = await database;
-    final rows = await db.query('merchant_rules', orderBy: 'created_at DESC');
+    final rows = await db.query(
+      'merchant_rules',
+      where: enabledOnly ? 'is_enabled = 1' : null,
+      orderBy: 'created_at DESC',
+    );
     return rows.map(MerchantRule.fromMap).toList();
   }
 
@@ -1125,6 +1372,9 @@ class LocalStorageService {
   static Future<int> applyMerchantRuleToExistingTransactions(
     MerchantRule rule,
   ) async {
+    if (!rule.isEnabled) {
+      throw StateError('Enable this merchant rule before applying it.');
+    }
     final db = await database;
     final rows = await db.query(
       'transactions',
@@ -1145,38 +1395,101 @@ class LocalStorageService {
       'merchant': rule.merchant,
       'is_user_corrected': 1,
     };
-    if (rule.standardCategoryId != null) {
-      values['standard_category_id'] = rule.standardCategoryId;
-      values['category'] =
-          _legacyCategoryNameForStandardCategoryId(rule.standardCategoryId);
-    }
     if (rule.tag != null) {
       values['tag'] = rule.tag;
     }
 
-    final batch = db.batch();
-    for (final id in matchingIds) {
-      batch.update('transactions', values, where: 'id = ?', whereArgs: [id]);
-    }
-    await batch.commit(noResult: true);
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final id in matchingIds) {
+        batch.update('transactions', values, where: 'id = ?', whereArgs: [id]);
+        if (rule.standardCategoryId != null) {
+          batch.update(
+              'transactions',
+              {
+                'standard_category_id': rule.standardCategoryId,
+                'category': _legacyCategoryNameForStandardCategoryId(
+                  rule.standardCategoryId,
+                ),
+                'category_source': 'merchant_rule',
+              },
+              where: "id = ? AND COALESCE(category_source, '') != 'user'",
+              whereArgs: [id]);
+        }
+      }
+      await batch.commit(noResult: true);
+    });
     return matchingIds.length;
   }
 
-  static Future<MerchantRule?> getMatchingMerchantRule(String rawMessage) async {
-    final db = await database;
-    final rows = await db.query(
-      'merchant_rules',
-      orderBy: 'LENGTH(match_text) DESC, created_at DESC',
+  static Future<MerchantRule?> getMatchingMerchantRule(
+      String rawMessage) async {
+    return CategoryService.matchingMerchantRule(
+      await getMerchantRules(enabledOnly: true),
+      rawMessage,
     );
-    final normalizedMessage = rawMessage.toLowerCase();
+  }
 
-    for (final row in rows) {
-      final rule = MerchantRule.fromMap(row);
-      if (normalizedMessage.contains(rule.matchText.toLowerCase())) {
-        return rule;
+  /// Preview recategorization without changing older or user-selected labels.
+  static Future<List<AutoCategoryChange>> previewAutomaticCategories() async {
+    final transactions = await getAllTransactions();
+    final rules = await getMerchantRules(enabledOnly: true);
+    final changes = <AutoCategoryChange>[];
+    for (final transaction in transactions) {
+      if (transaction.categorySource != 'auto' &&
+          transaction.categorySource != 'merchant_rule') {
+        continue;
       }
+      if (transaction.customCategoryId != null) {
+        continue;
+      }
+      final matchingRule = CategoryService.matchingMerchantRule(
+        rules,
+        transaction.rawMessage,
+      );
+      final assignment = CategoryService.assign(
+        transaction.copyWith(
+          clearCategory: true,
+          clearStandardCategory: true,
+        ),
+        merchantRule: matchingRule,
+      );
+      if (transaction.effectiveStandardCategoryId == assignment.categoryId &&
+          transaction.categorySource == assignment.source) {
+        continue;
+      }
+      changes.add(AutoCategoryChange(
+        transactionId: transaction.id,
+        merchant: transaction.displayName,
+        oldCategoryId: transaction.effectiveStandardCategoryId,
+        assignment: assignment,
+      ));
     }
-    return null;
+    return changes;
+  }
+
+  static Future<void> applyAutomaticCategories(
+    List<AutoCategoryChange> changes,
+  ) async {
+    if (changes.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final change in changes) {
+        batch.update(
+            'transactions',
+            {
+              'standard_category_id': change.assignment.categoryId,
+              'category': _legacyCategoryNameForStandardCategoryId(
+                change.assignment.categoryId,
+              ),
+              'category_source': change.assignment.source,
+            },
+            where: "id = ? AND category_source IN ('auto', 'merchant_rule')",
+            whereArgs: [change.transactionId]);
+      }
+      await batch.commit(noResult: true);
+    });
   }
 
   static Map<String, dynamic> _transactionValues(Transaction tx) {
@@ -1199,6 +1512,7 @@ class LocalStorageService {
       'is_salary': tx.isSalary ? 1 : 0,
       'category': tx.effectiveLegacyCategory?.name,
       'standard_category_id': tx.effectiveStandardCategoryId,
+      'category_source': tx.categorySource,
       'note': tx.note,
       'tag': tx.tag,
       'is_ignored': tx.isIgnored ? 1 : 0,
@@ -1226,6 +1540,7 @@ class LocalStorageService {
         'is_salary': tx.isSalary ? 1 : 0,
         'category': tx.effectiveLegacyCategory?.name,
         'standard_category_id': tx.effectiveStandardCategoryId,
+        'category_source': tx.categorySource,
         'note': tx.note,
         'tag': tx.tag,
         'is_ignored': tx.isIgnored ? 1 : 0,
@@ -1262,6 +1577,7 @@ class LocalStorageService {
             'is_salary': tx.isSalary ? 1 : 0,
             'category': tx.effectiveLegacyCategory?.name,
             'standard_category_id': tx.effectiveStandardCategoryId,
+            'category_source': tx.categorySource,
             'note': tx.note,
             'tag': tx.tag,
             'is_ignored': tx.isIgnored ? 1 : 0,
@@ -1299,7 +1615,7 @@ class LocalStorageService {
     final db = await database;
     final rows = await db.query(
       'transactions',
-      where: 'date >= ? AND date <= ?',
+      where: 'date >= ? AND date <= ? AND is_ignored = 0',
       whereArgs: [start.millisecondsSinceEpoch, end.millisecondsSinceEpoch],
       orderBy: 'date DESC',
     );
@@ -1376,6 +1692,7 @@ class LocalStorageService {
               row['standard_category_id'] as String?,
             ),
       standardCategoryId: row['standard_category_id'] as String?,
+      categorySource: row['category_source'] as String?,
       note: row['note'] as String?,
       tag: row['tag'] as String?,
       isIgnored: (row['is_ignored'] as int?) == 1,
@@ -1539,6 +1856,7 @@ class LocalStorageService {
         type,
         SUM(amount) as total
       FROM transactions
+      WHERE is_ignored = 0
       GROUP BY account_key, type
     ''');
 
@@ -1608,7 +1926,7 @@ class LocalStorageService {
   }) async {
     final db = await database;
 
-    String whereClause = "type = 'credit'";
+    String whereClause = "type = 'credit' AND is_ignored = 0";
     final whereArgs = <dynamic>[];
 
     if (minimumAmount != null) {
@@ -1718,6 +2036,17 @@ class LocalStorageService {
     return rows.isEmpty ? null : rows.first['value'] as String?;
   }
 
+  static Future<DateTime?> getLastSmsScanAt() async {
+    final value = await getSetting('last_sms_scan_at');
+    final milliseconds = int.tryParse(value ?? '');
+    return milliseconds == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
+
+  static Future<void> setLastSmsScanAt(DateTime date) =>
+      setSetting('last_sms_scan_at', date.millisecondsSinceEpoch.toString());
+
   // ==================== PROCESSED SMS TRACKING ====================
 
   /// Mark an SMS as processed (whether it was a transaction or not)
@@ -1778,6 +2107,20 @@ class LocalStorageService {
     return rows.map((r) => r['sms_id'] as String).toSet();
   }
 
+  /// Recheck previously skipped messages while retaining every user decision.
+  /// Android SMS is the source for their bodies on the next scan.
+  static Future<void> prepareSkippedMessagesForRescan() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.rawDelete('''
+        DELETE FROM processed_sms WHERE sms_id IN
+        (SELECT sms_id FROM sms_processing
+         WHERE outcome = ? AND
+           (raw_message IS NOT NULL OR reason = 'legacy_unclassified'))
+      ''', [SmsProcessingOutcome.skipped.name]);
+    });
+  }
+
   /// Get count of processed messages
   static Future<Map<String, int>> getStats() async {
     final db = await database;
@@ -1806,6 +2149,7 @@ class LocalStorageService {
     await db.delete('transactions');
     await db.delete('transaction_reviews');
     await db.delete('processed_sms');
+    await db.delete('sms_processing');
   }
 
   /// Delete transactions older than specified days
@@ -1952,6 +2296,7 @@ class LocalStorageService {
       {
         'category': category.name,
         'standard_category_id': category.standardCategoryId,
+        'category_source': 'user',
         'is_user_corrected': 1,
       },
       where: 'id = ?',
@@ -2015,6 +2360,50 @@ class LocalStorageService {
       where: 'id = ?',
       whereArgs: [txId],
     );
+  }
+
+  /// Assigns a My Category and trip tag to exactly the previewed active rows.
+  /// The whole window succeeds or fails together.
+  static Future<int> applyCustomCategoryToTransactions({
+    required Iterable<String> transactionIds,
+    required String customCategoryId,
+    required String tag,
+  }) async {
+    final ids = transactionIds.toSet().toList(growable: false);
+    final cleanTag = tag.trim();
+    if (ids.isEmpty) return 0;
+    if (cleanTag.isEmpty) {
+      throw ArgumentError.value(tag, 'tag', 'Enter a trip tag.');
+    }
+
+    final db = await database;
+    return db.transaction((txn) async {
+      final category = await txn.query(
+        'custom_categories',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [customCategoryId],
+        limit: 1,
+      );
+      if (category.isEmpty) {
+        throw StateError('The selected My Category no longer exists.');
+      }
+
+      final batch = txn.batch();
+      for (final id in ids) {
+        batch.update(
+          'transactions',
+          {'custom_category_id': customCategoryId, 'tag': cleanTag},
+          where: 'id = ? AND COALESCE(is_ignored, 0) = 0',
+          whereArgs: [id],
+        );
+      }
+      final results = await batch.commit();
+      return results.fold<int>(
+        0,
+        (count, result) => count + (result as int),
+      );
+    });
   }
 
   /// Update transaction payment source
@@ -2158,11 +2547,63 @@ class LocalStorageService {
         'standard_category_id': standardCategoryId,
         'category':
             _legacyCategoryNameForStandardCategoryId(standardCategoryId),
+        'category_source': 'user',
         'is_user_corrected': 1,
       },
       where: 'id = ?',
       whereArgs: [txId],
     );
+  }
+
+  /// Assigns an expense to a budget category. Choosing a standard category
+  /// clears a My Category so the chosen standard budget becomes effective.
+  static Future<void> updateTransactionBudgetCategory(
+    String transactionId,
+    String budgetCategoryId,
+  ) async {
+    final isCustom = budgetCategoryId.startsWith(Budget.customCategoryPrefix);
+    final storedId = isCustom
+        ? budgetCategoryId.substring(Budget.customCategoryPrefix.length)
+        : budgetCategoryId;
+    if (storedId.isEmpty) {
+      throw ArgumentError.value(budgetCategoryId, 'budgetCategoryId');
+    }
+
+    final db = await database;
+    await db.transaction((txn) async {
+      final category = await txn.query(
+        isCustom ? 'custom_categories' : 'standard_categories',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [storedId],
+        limit: 1,
+      );
+      if (category.isEmpty) {
+        throw StateError('The selected category no longer exists.');
+      }
+
+      final values = isCustom
+          ? <String, Object?>{
+              'custom_category_id': storedId,
+              'is_user_corrected': 1,
+            }
+          : <String, Object?>{
+              'standard_category_id': storedId,
+              'category': _legacyCategoryNameForStandardCategoryId(storedId),
+              'category_source': 'user',
+              'custom_category_id': null,
+              'is_user_corrected': 1,
+            };
+      final updated = await txn.update(
+        'transactions',
+        values,
+        where: 'id = ? AND COALESCE(is_ignored, 0) = 0',
+        whereArgs: [transactionId],
+      );
+      if (updated == 0) {
+        throw StateError('This transaction is no longer active.');
+      }
+    });
   }
 
   /// Get category usage statistics
@@ -2306,8 +2747,9 @@ class LocalStorageService {
         {
           'category': entry.value.name,
           'standard_category_id': entry.value.standardCategoryId,
+          'category_source': 'auto',
         },
-        where: 'id = ?',
+        where: "id = ? AND COALESCE(category_source, 'auto') = 'auto'",
         whereArgs: [entry.key],
       );
     }

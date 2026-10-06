@@ -1,22 +1,26 @@
-// Basic Flutter widget test for Payment Tracker
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-
-import 'package:payment_tracker/main.dart';
-import 'package:payment_tracker/services/sms_service.dart';
+import 'package:payment_tracker/models/transaction.dart';
+import 'package:payment_tracker/widgets/transaction_card.dart';
 
 void main() {
-  testWidgets('App loads successfully', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => SmsService(),
-        child: const PaymentTrackerApp(),
-      ),
+  testWidgets('transaction card shows a parsed payment', (tester) async {
+    final transaction = Transaction(
+      id: 'sms-1',
+      amount: 1250,
+      type: TransactionType.debit,
+      source: PaymentSource.upi,
+      sender: 'HDFC',
+      merchant: 'Coffee Shop',
+      date: DateTime(2026, 10, 6, 10),
+      rawMessage: 'Rs.1250 debited for UPI payment.',
     );
 
-    // Verify the app title is displayed
-    expect(find.text('Payment Tracker'), findsOneWidget);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: TransactionCard(tx: transaction)),
+    ));
+
+    expect(find.text('Coffee Shop'), findsOneWidget);
+    expect(find.textContaining('1,250'), findsWidgets);
   });
 }

@@ -157,6 +157,7 @@ class Transaction {
   final TransactionCategory?
       category; // Auto or manually tagged category (deprecated - for backward compatibility)
   final String? standardCategoryId; // New: References standard_categories table
+  final String? categorySource; // auto, merchant_rule, user, or legacy
   final String? note; // User-added personal note
   final String?
       tag; // Feature 1: User-defined label (e.g. "reimbursable", "split")
@@ -188,6 +189,7 @@ class Transaction {
     this.isSalary = false,
     this.category, // Kept for backward compatibility
     this.standardCategoryId,
+    this.categorySource,
     this.note,
     this.tag,
     this.isIgnored = false,
@@ -263,6 +265,7 @@ class Transaction {
     bool? isSalary,
     TransactionCategory? category,
     String? standardCategoryId,
+    String? categorySource,
     String? note,
     String? tag,
     bool? isIgnored,
@@ -301,6 +304,8 @@ class Transaction {
       standardCategoryId: clearStandardCategory
           ? null
           : (standardCategoryId ?? this.standardCategoryId),
+      categorySource: categorySource ??
+          (clearStandardCategory ? null : this.categorySource),
       note: clearNote ? null : (note ?? this.note),
       tag: clearTag ? null : (tag ?? this.tag),
       isIgnored: isIgnored ?? this.isIgnored,

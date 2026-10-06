@@ -31,7 +31,7 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
     try {
       final results = await Future.wait([
         LocalStorageService.getAllSalaryCycles(),
-        LocalStorageService.getAllTransactions(),
+        LocalStorageService.getTrackedTransactions(),
       ]);
       if (!mounted) return;
       final cycles = results[0] as List<SalaryCycle>;

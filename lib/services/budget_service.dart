@@ -1,12 +1,14 @@
 // lib/services/budget_service.dart
 
 import '../models/budget.dart';
+import '../models/custom_category.dart';
 import '../models/standard_category.dart';
 import '../models/transaction.dart';
 import 'local_storage_service.dart';
 
 /// Manages budgets and generates spending-based budget suggestions.
 class BudgetService {
+  static const String customCategoryPrefix = Budget.customCategoryPrefix;
   static const Set<String> _nonBudgetableCategoryIds = {
     'salary',
     'cashback',
@@ -14,14 +16,68 @@ class BudgetService {
     'uncategorized',
   };
 
-  static Future<Map<String, StandardCategory>>
-      _loadStandardCategoryMap() async {
+  static Future<Map<String, StandardCategory>> loadBudgetCategories() async {
     final categories = await LocalStorageService.getAllStandardCategories();
+    final customCategories = await LocalStorageService.getAllCustomCategories();
     return {
       for (final category in StandardCategory.defaultCategories)
         category.id: category,
       for (final category in categories) category.id: category,
+      for (var index = 0; index < customCategories.length; index++)
+        '$customCategoryPrefix${customCategories[index].id}':
+            _customBudgetCategory(customCategories[index], index),
     };
+  }
+
+  static StandardCategory _customBudgetCategory(
+      CustomCategory category, int index) {
+    return StandardCategory(
+      id: '$customCategoryPrefix${category.id}',
+      name: category.name,
+      displayName: 'My: ${category.name}',
+      emoji: category.emoji,
+      colorValue: category.colorValue,
+      sortOrder: 10000 + index,
+      createdAt: category.createdAt,
+    );
+  }
+
+  /// A My Category takes precedence over the underlying standard category.
+  static String categoryIdForTransaction(Transaction transaction) {
+    final customId = transaction.customCategoryId;
+    if (customId != null && customId.isNotEmpty) {
+      return '$customCategoryPrefix$customId';
+    }
+    return transaction.effectiveStandardCategoryId ?? 'uncategorized';
+  }
+
+  static bool isBudgetExpense(Transaction transaction) {
+    if (!transaction.isDebit ||
+        transaction.isIgnored ||
+        transaction.isPartOfTransfer ||
+        transaction.isSalary) {
+      return false;
+    }
+    const excludedStandardCategories = {'salary', 'cashback', 'transfer'};
+    return !excludedStandardCategories
+        .contains(transaction.effectiveStandardCategoryId);
+  }
+
+  /// Spending that has no budget for its effective category.
+  static List<Transaction> outsideBudgetTransactions({
+    required Iterable<Transaction> transactions,
+    required Set<String> budgetCategoryIds,
+    DateTime? start,
+    DateTime? end,
+  }) {
+    return transactions
+        .where(isBudgetExpense)
+        .where((tx) => start == null || !tx.date.isBefore(start))
+        .where((tx) => end == null || !tx.date.isAfter(end))
+        .where(
+            (tx) => !budgetCategoryIds.contains(categoryIdForTransaction(tx)))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
   }
 
   static Future<Map<String, double>> suggestBudgets({
@@ -47,14 +103,13 @@ class BudgetService {
 
   static Map<String, double> _getMonthlyAverages(
       List<Transaction> transactions) {
-    final debits = transactions.where((t) => t.isDebit).toList();
+    final debits = transactions.where(isBudgetExpense).toList();
     if (debits.isEmpty) return {};
 
     final monthlyTotals = <String, Map<String, double>>{};
     for (final tx in debits) {
       final monthKey = '${tx.date.year}-${tx.date.month}';
-      final categoryId = tx.effectiveStandardCategoryId ??
-          TransactionCategory.uncategorized.standardCategoryId;
+      final categoryId = categoryIdForTransaction(tx);
       monthlyTotals.putIfAbsent(monthKey, () => {});
       monthlyTotals[monthKey]![categoryId] =
           (monthlyTotals[monthKey]![categoryId] ?? 0) + tx.amount;
@@ -89,12 +144,11 @@ class BudgetService {
       start: start,
       end: effectiveEnd,
     );
-    final categoriesById = await _loadStandardCategoryMap();
+    final categoriesById = await loadBudgetCategories();
 
     final categorySpent = <String, double>{};
-    for (final tx in currentTransactions.where((t) => t.isDebit)) {
-      final categoryId = tx.effectiveStandardCategoryId ??
-          TransactionCategory.uncategorized.standardCategoryId;
+    for (final tx in currentTransactions.where(isBudgetExpense)) {
+      final categoryId = categoryIdForTransaction(tx);
       categorySpent[categoryId] = (categorySpent[categoryId] ?? 0) + tx.amount;
     }
 

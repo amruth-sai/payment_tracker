@@ -4,6 +4,7 @@ import '../models/transaction.dart';
 import '../models/transaction_review.dart';
 import '../services/sender_discovery_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/category_service.dart';
 
 class SmsParser {
   // Cache for sender mappings to avoid database lookups on every parse
@@ -79,6 +80,37 @@ class SmsParser {
     final s = sender.toUpperCase();
     return _knownSenders.any((k) => s.contains(k)) ||
         RegExp(r'^[A-Z]{2}-[A-Z]{5,6}(?:-[A-Z])?$').hasMatch(sender); // AD-AIRBNK-S, DM-HDFCBK, JD-JIOPBS-S format
+  }
+
+  /// Payment alerts from unfamiliar senders can still enter review.
+  static bool isLikelyPaymentMessage(String sender, String body) {
+    if (isBankSms(sender)) return true;
+    if (!hasAmountIndicator(body)) return false;
+    return RegExp(
+      r'\b(account|upi|imps|neft|rtgs|bank|card|wallet|transaction|txn)\b|a/c',
+      caseSensitive: false,
+    ).hasMatch(body);
+  }
+
+  static bool hasAmountIndicator(String body) =>
+      _hasAmountIndicator(body.toLowerCase()) || body.contains('\u20b9');
+
+  static bool isSecurityMessage(String body) {
+    final lower = body.toLowerCase();
+    final hasSecurityCode = RegExp(
+      r'\b(otp|one.time.password|verification code|login code)\b',
+    ).hasMatch(lower);
+    final confirmsPayment = RegExp(
+      r'\b(debited|credited|withdrawn|spent|paid to|received from)\b',
+    ).hasMatch(lower);
+    return hasSecurityCode && !confirmsPayment;
+  }
+
+  static String skipReason(String body, String sender) {
+    if (!isLikelyPaymentMessage(sender, body)) return 'sender_not_recognized';
+    if (!hasAmountIndicator(body)) return 'no_amount_indicator';
+    if (_extractAmount(body) == null) return 'amount_not_found';
+    return 'not_a_payment';
   }
 
   /// Load sender mappings from database with caching
@@ -282,15 +314,7 @@ class SmsParser {
 
   static Future<Transaction?> parse(
       String body, String sender, DateTime date, String id) async {
-    final lower = body.toLowerCase();
-
-    // Must contain amount indicators
-    if (!lower.contains('rs') &&
-        !lower.contains('inr') &&
-        !lower.contains('₹') &&
-        !lower.contains('amount')) {
-      return null;
-    }
+    if (!hasAmountIndicator(body)) return null;
 
     final amount = _extractAmount(body);
     if (amount == null || amount <= 0) return null;
@@ -328,15 +352,7 @@ class SmsParser {
   /// Sync version of parse for compatibility (when account assignment isn't needed)
   static Transaction? parseSync(
       String body, String sender, DateTime date, String id) {
-    final lower = body.toLowerCase();
-
-    // Must contain amount indicators
-    if (!lower.contains('rs') &&
-        !lower.contains('inr') &&
-        !lower.contains('₹') &&
-        !lower.contains('amount')) {
-      return null;
-    }
+    if (!hasAmountIndicator(body)) return null;
 
     final amount = _extractAmount(body);
     if (amount == null || amount <= 0) return null;
@@ -415,7 +431,7 @@ class SmsParser {
 
     final category =
         TransactionCategory.fromStandardCategoryId(review.standardCategoryId);
-    return Transaction(
+    final transaction = Transaction(
       id: review.id,
       amount: review.amount,
       type: type,
@@ -431,15 +447,26 @@ class SmsParser {
       isUserCorrected: true,
       category: category,
       standardCategoryId: review.standardCategoryId,
+      categorySource: review.standardCategoryId == null
+          ? null
+          : (review.categorySource ?? 'user'),
       tag: review.tag,
+    );
+    if (review.standardCategoryId != null) return transaction;
+    final assignment = CategoryService.assign(transaction);
+    return transaction.copyWith(
+      category: TransactionCategory.fromStandardCategoryId(
+        assignment.categoryId,
+      ),
+      standardCategoryId: assignment.categoryId,
+      categorySource: assignment.source,
     );
   }
 
   static bool _hasAmountIndicator(String lower) {
-    return lower.contains('rs') ||
-        lower.contains('inr') ||
-        lower.contains('â‚¹') ||
-        lower.contains('amount');
+    return lower.contains('\u20b9') ||
+        RegExp(r'\b(?:rs\.?|inr)\s*\d|\b(?:amount|amt)\b')
+            .hasMatch(lower);
   }
 
   static double? _extractAmount(String body) {

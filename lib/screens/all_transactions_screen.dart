@@ -13,6 +13,7 @@ import '../models/standard_category.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/merged_transfer_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
+import 'transaction_window_category_screen.dart';
 import '../utils/date_utils.dart';
 import '../utils/format_utils.dart';
 
@@ -114,6 +115,24 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
         title: const Text('All Transactions',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.date_range_outlined),
+            tooltip: 'Categorize a trip window',
+            onPressed: () async {
+              final updated = await Navigator.push<int>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TransactionWindowCategoryScreen(),
+                ),
+              );
+              if (!context.mounted) return;
+              await _loadCustomCategories();
+              if (!context.mounted || updated == null) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Categorized $updated transactions.')),
+              );
+            },
+          ),
           PopupMenuButton<SortOrder>(
             icon: Icon(
               _sortOrder == SortOrder.ascending
@@ -479,7 +498,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
       result = result
           .where((t) =>
               t.effectiveStandardCategoryId != null &&
-              _selectedStandardCategoryIds.contains(t.effectiveStandardCategoryId))
+              _selectedStandardCategoryIds
+                  .contains(t.effectiveStandardCategoryId))
           .toList();
     }
 
@@ -577,8 +597,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
         cats.add(category);
       }
     }
-    final sorted = cats.toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final sorted = cats.toList()..sort((a, b) => a.name.compareTo(b.name));
     return sorted;
   }
 

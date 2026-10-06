@@ -36,7 +36,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
     setState(() => _isLoading = true);
 
     final accounts = await LocalStorageService.getAllAccounts();
-    final transactions = await LocalStorageService.getAllTransactions();
+    final transactions = await LocalStorageService.getTrackedTransactions();
 
     // Calculate stats per account
     final stats = <String, _AccountStats>{};

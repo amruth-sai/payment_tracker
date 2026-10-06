@@ -25,7 +25,7 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final transactions = await LocalStorageService.getAllTransactions();
+    final transactions = await LocalStorageService.getTrackedTransactions();
     final emis = EMIService.detectEMIs(transactions);
     final burden = EMIService.totalMonthlyBurden(emis);
     setState(() {
