@@ -553,6 +553,68 @@ class LocalStorageService {
     };
   }
 
+  /// Links pairs atomically without overwriting notes, categories, or other edits.
+  /// A stale or overlapping suggestion aborts the entire batch.
+  static Future<void> mergeTransferPairsAtomic(
+    List<({String debitId, String creditId, String groupId})> pairs,
+  ) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final usedIds = <String>{};
+      final usedGroups = <String>{};
+      for (final pair in pairs) {
+        if (!usedIds.add(pair.debitId) ||
+            !usedIds.add(pair.creditId) ||
+            !usedGroups.add(pair.groupId)) {
+          throw StateError('A transaction can belong to only one transfer.');
+        }
+        final rows = await txn.query(
+          'transactions',
+          where: 'id IN (?, ?)',
+          whereArgs: [pair.debitId, pair.creditId],
+        );
+        if (rows.length != 2) {
+          throw StateError('A suggested transaction no longer exists.');
+        }
+        final current = {
+          for (final row in rows) row['id']: _rowToTransaction(row),
+        };
+        final debit = current[pair.debitId]!;
+        final credit = current[pair.creditId]!;
+        if (!debit.isDebit ||
+            !credit.isCredit ||
+            debit.isIgnored ||
+            credit.isIgnored ||
+            debit.isSalary ||
+            credit.isSalary ||
+            debit.isPartOfTransfer ||
+            credit.isPartOfTransfer ||
+            Money.toPaise(debit.amount) != Money.toPaise(credit.amount) ||
+            (debit.accountId != null && debit.accountId == credit.accountId) ||
+            (debit.sender == credit.sender &&
+                debit.accountLast4 == credit.accountLast4) ||
+            debit.date.difference(credit.date).abs() >
+                const Duration(days: 1)) {
+          throw StateError('A suggestion has changed. Refresh and try again.');
+        }
+        for (final tx in [debit, credit]) {
+          await txn.update(
+            'transactions',
+            {
+              'transfer_group_id': pair.groupId,
+              'transfer_partner_id': tx.isDebit ? credit.id : debit.id,
+              'is_transfer_source': tx.isDebit ? 1 : 0,
+              'is_transfer_destination': tx.isCredit ? 1 : 0,
+              'is_user_corrected': 1,
+            },
+            where: 'id = ?',
+            whereArgs: [tx.id],
+          );
+        }
+      }
+    });
+  }
+
   /// Update multiple transactions atomically (for transfer operations)
   static Future<void> updateTransactionsAtomic(
     List<Transaction> transactions,

@@ -85,8 +85,8 @@ class TransferService {
     // Sort by confidence (highest first)
     potentialPairs.sort((a, b) => b.confidence.compareTo(a.confidence));
 
-    // Limit results for performance (avoid overwhelming UI)
-    return potentialPairs.take(50).toList();
+    // The suggestions list is lazy; bulk merging must include every pair.
+    return potentialPairs;
   }
 
   /// Evaluate if two transactions could be a transfer pair
@@ -193,56 +193,23 @@ class TransferService {
     Transaction debit,
     Transaction credit,
   ) async {
-    final transferGroupId = _uuid.v4();
+    await LocalStorageService.mergeTransferPairsAtomic([
+      (debitId: debit.id, creditId: credit.id, groupId: _uuid.v4()),
+    ]);
+  }
 
-    if (!debit.isDebit ||
-        !credit.isCredit ||
-        debit.isIgnored ||
-        credit.isIgnored ||
-        debit.isSalary ||
-        credit.isSalary ||
-        (debit.accountId != null && debit.accountId == credit.accountId)) {
-      throw ArgumentError(
-        'A transfer needs one debit and one credit in different accounts.',
-      );
-    }
-    // Validate inputs before processing
-    if (debit.amount != credit.amount) {
-      throw Exception('Cannot merge transactions with different amounts');
-    }
-    if (debit.id == credit.id) {
-      throw Exception('Cannot merge a transaction with itself');
-    }
-    if (debit.isPartOfTransfer || credit.isPartOfTransfer) {
-      throw Exception(
-        'Cannot merge transactions that are already part of a transfer',
-      );
-    }
-
-    // Update the debit transaction
-    final updatedDebit = debit.copyWith(
-      transferGroupId: transferGroupId,
-      transferPartnerId: credit.id,
-      isTransferSource: true,
-    );
-
-    // Update the credit transaction
-    final updatedCredit = credit.copyWith(
-      transferGroupId: transferGroupId,
-      transferPartnerId: debit.id,
-      isTransferDestination: true,
-    );
-
-    try {
-      // Save both transactions atomically
-      await LocalStorageService.updateTransactionsAtomic([
-        updatedDebit,
-        updatedCredit,
-      ]);
-    } catch (e) {
-      // If the atomic update fails, ensure data integrity by not having partial updates
-      throw Exception('Failed to merge transactions: $e');
-    }
+  /// Merge the reviewed suggestions in one commit, using current database rows.
+  static Future<int> mergeTransfers(List<TransferPair> pairs) async {
+    if (pairs.isEmpty) return 0;
+    await LocalStorageService.mergeTransferPairsAtomic([
+      for (final pair in pairs)
+        (
+          debitId: pair.debitTransaction.id,
+          creditId: pair.creditTransaction.id,
+          groupId: _uuid.v4(),
+        ),
+    ]);
+    return pairs.length;
   }
 
   /// Unmerge a transfer pair

@@ -19,7 +19,9 @@ class TransferManagementScreen extends StatefulWidget {
 class _TransferManagementScreenState extends State<TransferManagementScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<dynamic> _potentialTransfers = []; // TransferPair objects
+  List<TransferPair> _potentialTransfers = [];
+  final Set<(String, String)> _dismissedPairs = {};
+  bool _isMerging = false;
   bool _isLoading = false;
 
   @override
@@ -47,7 +49,14 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
 
       if (mounted) {
         setState(() {
-          _potentialTransfers = potentialPairs;
+          _potentialTransfers = potentialPairs
+              .where(
+                (pair) => !_dismissedPairs.contains((
+                  pair.debitTransaction.id,
+                  pair.creditTransaction.id,
+                )),
+              )
+              .toList();
           _isLoading = false;
         });
       }
@@ -74,6 +83,7 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
         ),
         actions: [
           PopupMenuButton<String>(
+            enabled: !_isMerging,
             icon: const Icon(Icons.more_vert),
             onSelected: (value) async {
               if (value == 'integrity_check') {
@@ -114,22 +124,27 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildSuggestionsTab(), _buildMergedTransfersTab()],
+      body: AbsorbPointer(
+        absorbing: _isMerging,
+        child: TabBarView(
+          controller: _tabController,
+          children: [_buildSuggestionsTab(), _buildMergedTransfersTab()],
+        ),
       ),
     );
   }
 
   Widget _buildSuggestionsTab() {
-    if (_isLoading) {
-      return const Center(
+    if (_isLoading || _isMerging) {
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Analyzing transactions...'),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              _isMerging ? 'Merging transfers...' : 'Analyzing transactions...',
+            ),
           ],
         ),
       );
@@ -157,17 +172,43 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(8),
-      itemCount: _potentialTransfers.length,
-      itemBuilder: (context, index) {
-        final transferPair = _potentialTransfers[index];
-        return TransferPairSuggestionCard(
-          transferPair: transferPair,
-          onMerge: () => _handleMergeTransfer(transferPair),
-          onDismiss: () => _handleDismissSuggestion(index),
-        );
-      },
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                key: const ValueKey('merge-all-transfers'),
+                onPressed: () => _mergeTransfers(List.of(_potentialTransfers)),
+                icon: const Icon(Icons.merge_rounded),
+                label: Text('Merge all (${_potentialTransfers.length} pairs)'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Merge all suggestions below as transfers between your accounts. '
+                'Transfers are excluded from income and spending totals. '
+                'You can unmerge them in the Merged tab.',
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: _potentialTransfers.length,
+            itemBuilder: (context, index) {
+              final transferPair = _potentialTransfers[index];
+              return TransferPairSuggestionCard(
+                transferPair: transferPair,
+                onMerge: () => _mergeTransfers([transferPair]),
+                onDismiss: () => _handleDismissSuggestion(index),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -216,39 +257,46 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
     );
   }
 
-  Future<void> _handleMergeTransfer(dynamic transferPair) async {
+  Future<void> _mergeTransfers(List<TransferPair> pairs) async {
+    if (_isMerging || pairs.isEmpty) return;
+    setState(() => _isMerging = true);
+    final sms = context.read<SmsService>();
+    var saved = false;
     try {
-      await TransferService.mergeAsTransfer(
-        transferPair.debitTransaction,
-        transferPair.creditTransaction,
+      final count = await TransferService.mergeTransfers(pairs);
+      saved = true;
+      await sms.reloadFromCache();
+      if (!mounted) return;
+      await _loadPotentialTransfers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Merged $count transfer ${count == 1 ? 'pair' : 'pairs'}',
+          ),
+        ),
       );
-
-      if (mounted) {
-        context.read<SmsService>().reloadFromCache();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transactions merged as transfer successfully'),
-            backgroundColor: Colors.green,
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Transfers saved. Reopen this screen to refresh the list.'
+                : 'Could not merge transfers. No changes were saved. Refresh suggestions and try again.',
           ),
-        );
-
-        // Refresh suggestions
-        _loadPotentialTransfers();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error merging transfer: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isMerging = false);
     }
   }
 
   void _handleDismissSuggestion(int index) {
+    final pair = _potentialTransfers[index];
+    final key = (pair.debitTransaction.id, pair.creditTransaction.id);
     setState(() {
+      _dismissedPairs.add(key);
       _potentialTransfers.removeAt(index);
     });
 
@@ -258,7 +306,8 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
-            _loadPotentialTransfers(); // Reload all suggestions
+            _dismissedPairs.remove(key);
+            _loadPotentialTransfers();
           },
         ),
       ),
@@ -270,7 +319,8 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
       await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
 
       if (mounted) {
-        context.read<SmsService>().reloadFromCache();
+        await context.read<SmsService>().reloadFromCache();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Transfer unmerged successfully'),

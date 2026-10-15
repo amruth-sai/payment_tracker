@@ -20,12 +20,13 @@ class AllTransactionsScreen extends StatefulWidget {
   State<AllTransactionsScreen> createState() => _AllTransactionsScreenState();
 }
 
-class _AllTransactionsScreenState extends State<AllTransactionsScreen> {
-  late int _direction;
+class _AllTransactionsScreenState extends State<AllTransactionsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
   String _search = '';
-  String? _sender;
-  String? _category;
-  String? _tag;
+  final Set<String> _senders = {};
+  final Set<String> _categories = {};
+  final Set<String> _tags = {};
   String? _cycleId;
   String _sort = 'date';
   List<SalaryCycle> _cycles = [];
@@ -33,14 +34,20 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen> {
   @override
   void initState() {
     super.initState();
-    _direction = widget.filter;
+    _tabs = TabController(length: 3, vsync: this, initialIndex: widget.filter);
+    _tabs.addListener(_tabChanged);
     _loadCycles();
   }
 
   Future<void> _loadCycles() async {
     try {
       final cycles = await LocalStorageService.getAllSalaryCycles();
-      if (mounted) setState(() => _cycles = cycles);
+      if (mounted) {
+        setState(() {
+          _cycles = cycles;
+          _cycleId = cycles.where((cycle) => cycle.isCurrent).firstOrNull?.id;
+        });
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -138,28 +145,298 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen> {
     );
   }
 
+  void _tabChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
-  Widget build(BuildContext context) {
-    final sms = context.watch<SmsService>();
-    final categories = sms.categoriesById;
-    final all = sms.transactions;
-    final senders = all.map((tx) => tx.sender).toSet().toList()..sort();
-    final tags = all.map((tx) => tx.tag).whereType<String>().toSet().toList()
-      ..sort();
+  void dispose() {
+    _tabs.removeListener(_tabChanged);
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  List<Transaction> _filtered(
+    List<Transaction> all,
+    int direction, {
+    bool includeSenders = true,
+    bool includeCategories = true,
+    bool includeTags = true,
+  }) {
     final cycle = _cycles.where((cycle) => cycle.id == _cycleId).firstOrNull;
-    final filtered = all.where((tx) {
-      if (_direction == 1 && !tx.isCredit || _direction == 2 && !tx.isDebit) {
+    return all.where((tx) {
+      if (direction == 1 && !tx.isCredit || direction == 2 && !tx.isDebit) {
         return false;
       }
-      if (_sender != null && tx.sender != _sender) return false;
-      if (_category != null && (tx.categoryId ?? '') != _category) return false;
-      if (_tag != null && tx.tag != _tag) return false;
+      if (includeSenders &&
+          _senders.isNotEmpty &&
+          !_senders.contains(tx.sender)) {
+        return false;
+      }
+      if (includeCategories &&
+          _categories.isNotEmpty &&
+          !_categories.contains(tx.categoryId ?? '')) {
+        return false;
+      }
+      if (includeTags && _tags.isNotEmpty && !_tags.contains(tx.tag)) {
+        return false;
+      }
       if (cycle != null && !cycle.contains(tx.date)) return false;
       final text =
           '${tx.displayName} ${tx.sender} ${tx.note ?? ''} ${tx.tag ?? ''} ${tx.amount} ${tx.referenceId ?? ''}'
               .toLowerCase();
       return text.contains(_search);
     }).toList();
+  }
+
+  List<String> _options(
+    Iterable<String> values,
+    Set<String> selected, {
+    String Function(String)? label,
+  }) {
+    final result = {...values, ...selected}.toList();
+    result.sort(
+      (a, b) => (label?.call(a) ?? a).toLowerCase().compareTo(
+        (label?.call(b) ?? b).toLowerCase(),
+      ),
+    );
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sms = context.watch<SmsService>();
+    final categories = sms.categoriesById;
+    final all = sms.transactions;
+    String categoryLabel(String id) => id.isEmpty
+        ? 'Uncategorized'
+        : categories[id]?.name ?? 'Deleted category';
+    final senders = _options(
+      _filtered(all, _tabs.index, includeSenders: false).map((tx) => tx.sender),
+      _senders,
+    );
+    final categoryIds = _options(
+      _filtered(
+        all,
+        _tabs.index,
+        includeCategories: false,
+      ).map((tx) => tx.categoryId ?? ''),
+      _categories,
+      label: categoryLabel,
+    );
+    final tags = _options(
+      _filtered(
+        all,
+        _tabs.index,
+        includeTags: false,
+      ).map((tx) => tx.tag).whereType<String>().where((tag) => tag.isNotEmpty),
+      _tags,
+    );
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'All Transactions',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Manage categories',
+            icon: const Icon(Icons.category_outlined),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+              );
+              if (!mounted) return;
+              setState(
+                () => _categories.removeWhere(
+                  (id) => id.isNotEmpty && !sms.categoriesById.containsKey(id),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Categorize a date or transaction window',
+            icon: const Icon(Icons.date_range_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const TransactionWindowCategoryScreen(),
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Sort by amount',
+            icon: Icon(
+              _sort == 'amount_up'
+                  ? Icons.arrow_upward_rounded
+                  : _sort == 'amount_down'
+                  ? Icons.arrow_downward_rounded
+                  : Icons.sort_rounded,
+            ),
+            onSelected: (value) => setState(() => _sort = value),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'date', child: Text('Default (by date)')),
+              PopupMenuItem(
+                value: 'amount_up',
+                child: Text('Amount: Low to High'),
+              ),
+              PopupMenuItem(
+                value: 'amount_down',
+                child: Text('Amount: High to Low'),
+              ),
+            ],
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(text: 'All'),
+            Tab(text: 'Money In'),
+            Tab(text: 'Money Out'),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SearchBar(
+              hintText: 'Search merchant, bank, amount or notes...',
+              leading: const Icon(Icons.search_rounded),
+              onChanged: (value) =>
+                  setState(() => _search = value.toLowerCase().trim()),
+            ),
+          ),
+          if (senders.isNotEmpty)
+            _chipRow(
+              'banks',
+              'All Banks',
+              Icons.account_balance,
+              senders,
+              _senders,
+              (id) => id,
+            ),
+          if (categoryIds.isNotEmpty)
+            _chipRow(
+              'categories',
+              'All Categories',
+              Icons.category_outlined,
+              categoryIds,
+              _categories,
+              categoryLabel,
+              avatar: (id) => categories[id] == null
+                  ? null
+                  : Text(
+                      categories[id]!.emoji,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+              color: (id) => categories[id]?.color,
+            ),
+          if (tags.isNotEmpty)
+            _chipRow(
+              'tags',
+              'All Tags',
+              Icons.sell_outlined,
+              tags,
+              _tags,
+              (id) => id,
+            ),
+          if (_cycles.isNotEmpty)
+            _chipStrip('periods', [
+              FilterChip(
+                avatar: const Icon(Icons.calendar_month, size: 16),
+                label: const Text('All Time'),
+                selected: _cycleId == null,
+                onSelected: (_) => setState(() => _cycleId = null),
+              ),
+              ..._cycles.map(
+                (cycle) => FilterChip(
+                  key: ValueKey('period-${cycle.id}'),
+                  avatar: cycle.isCurrent
+                      ? const Icon(Icons.circle, size: 8, color: Colors.green)
+                      : null,
+                  label: Text(
+                    cycle.cycleLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  selected: _cycleId == cycle.id,
+                  onSelected: (_) => setState(
+                    () => _cycleId = _cycleId == cycle.id ? null : cycle.id,
+                  ),
+                ),
+              ),
+            ]),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                for (var direction = 0; direction < 3; direction++)
+                  _transactionList(sms, _filtered(all, direction), direction),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipRow(
+    String key,
+    String title,
+    IconData icon,
+    List<String> options,
+    Set<String> selected,
+    String Function(String) label, {
+    Widget? Function(String)? avatar,
+    Color? Function(String)? color,
+  }) => _chipStrip(key, [
+    FilterChip(
+      key: ValueKey('$key-all'),
+      avatar: Icon(icon, size: 16),
+      label: Text(title),
+      selected: selected.isEmpty,
+      onSelected: (_) => setState(selected.clear),
+    ),
+    ...options.map(
+      (id) => FilterChip(
+        key: ValueKey('$key-$id'),
+        avatar: avatar?.call(id),
+        label: Text(label(id), style: const TextStyle(fontSize: 12)),
+        selected: selected.contains(id),
+        backgroundColor: color?.call(id)?.withValues(alpha: 0.1),
+        selectedColor: color?.call(id)?.withValues(alpha: 0.25),
+        onSelected: (value) => setState(() {
+          if (value) {
+            selected.add(id);
+          } else {
+            selected.remove(id);
+          }
+        }),
+      ),
+    ),
+  ]);
+
+  Widget _chipStrip(String key, List<Widget> chips) => SizedBox(
+    height: 24 + MediaQuery.textScalerOf(context).scale(18),
+    child: ListView(
+      key: PageStorageKey('filter-$key'),
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      children: chips
+          .map(
+            (chip) =>
+                Padding(padding: const EdgeInsets.only(right: 8), child: chip),
+          )
+          .toList(),
+    ),
+  );
+
+  Widget _transactionList(
+    SmsService sms,
+    List<Transaction> filtered,
+    int direction,
+  ) {
     final items = <Object>[
       ...TransferService.getMergedTransfers(filtered),
       ...TransferService.getStandaloneTransactions(filtered),
@@ -175,7 +452,6 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen> {
           ? amountOf(a).compareTo(amountOf(b))
           : amountOf(b).compareTo(amountOf(a)),
     );
-    // Headers and payments are individual lazy rows, including on busy days.
     final rows = <Object>[];
     String? lastDay;
     for (final item in items) {
@@ -188,170 +464,38 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen> {
       }
       rows.add(item);
     }
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Transactions'),
-        actions: [
-          IconButton(
-            tooltip: 'Manage categories',
-            icon: const Icon(Icons.category_outlined),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CategoriesScreen()),
-            ),
+    if (rows.isEmpty) {
+      return const Center(child: Text('No matching transactions'));
+    }
+    return ListView.builder(
+      key: PageStorageKey('transactions-$direction'),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final item = rows[index];
+        if (item is String) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text(item, style: Theme.of(context).textTheme.labelLarge),
+          );
+        }
+        if (item is MergedTransfer) {
+          return MergedTransferCard(
+            mergedTransfer: item,
+            onTap: () => _openTransfer(item),
+          );
+        }
+        final tx = item as Transaction;
+        return TransactionCard(
+          tx: tx,
+          accountDisplayName: sms.getAccountDisplayName(
+            tx.accountId,
+            tx.accountLast4,
           ),
-          IconButton(
-            tooltip: 'Categorize a date or transaction window',
-            icon: const Icon(Icons.date_range),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const TransactionWindowCategoryScreen(),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Search merchant, amount, notes or reference',
-              ),
-              onChanged: (value) =>
-                  setState(() => _search = value.toLowerCase().trim()),
-            ),
-          ),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('All')),
-              ButtonSegment(value: 1, label: Text('Money in')),
-              ButtonSegment(value: 2, label: Text('Money out')),
-            ],
-            selected: {_direction},
-            onSelectionChanged: (value) =>
-                setState(() => _direction = value.first),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                _filter<String>(
-                  'All senders',
-                  senders,
-                  _sender,
-                  (value) => value,
-                  (value) => setState(() => _sender = value),
-                ),
-                _filter<String>(
-                  'All categories',
-                  ['', ...categories.keys],
-                  categories.containsKey(_category) || _category == ''
-                      ? _category
-                      : null,
-                  (value) => categories[value]?.name ?? 'Uncategorized',
-                  (value) => setState(() => _category = value),
-                ),
-                _filter<String>(
-                  'All tags',
-                  tags,
-                  _tag,
-                  (value) => value,
-                  (value) => setState(() => _tag = value),
-                ),
-                _filter<String>(
-                  'All periods',
-                  _cycles.map((c) => c.id).toList(),
-                  _cycleId,
-                  (value) =>
-                      _cycles.firstWhere((c) => c.id == value).cycleLabel,
-                  (value) => setState(() => _cycleId = value),
-                ),
-                DropdownButton<String>(
-                  value: _sort,
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'date',
-                      child: Text('Newest first'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'amount_up',
-                      child: Text('Amount low to high'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'amount_down',
-                      child: Text('Amount high to low'),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _sort = value!),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: rows.isEmpty
-                ? const Center(child: Text('No matching transactions'))
-                : ListView.builder(
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) {
-                      final item = rows[index];
-                      if (item is String) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                          child: Text(
-                            item,
-                            style: Theme.of(context).textTheme.labelLarge,
-                          ),
-                        );
-                      }
-                      if (item is MergedTransfer) {
-                        return MergedTransferCard(
-                          mergedTransfer: item,
-                          onTap: () => _openTransfer(item),
-                        );
-                      }
-                      final tx = item as Transaction;
-                      return TransactionCard(
-                        tx: tx,
-                        accountDisplayName: sms.getAccountDisplayName(
-                          tx.accountId,
-                          tx.accountLast4,
-                        ),
-                        onTap: () => TransactionDetailSheet.show(context, tx),
-                        onSwipeIgnore: (tx) => _edit(tx, ignore: true),
-                        onSwipeToggleType: _edit,
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
+          onTap: () => TransactionDetailSheet.show(context, tx),
+          onSwipeIgnore: (tx) => _edit(tx, ignore: true),
+          onSwipeToggleType: _edit,
+        );
+      },
     );
   }
-
-  Widget _filter<T>(
-    String title,
-    List<T> values,
-    T? selected,
-    String Function(T) label,
-    ValueChanged<T?> changed,
-  ) => Padding(
-    padding: const EdgeInsets.only(right: 16),
-    child: DropdownButton<T>(
-      value: values.contains(selected) ? selected : null,
-      hint: Text(title),
-      items: [
-        DropdownMenuItem<T>(child: Text(title)),
-        ...values.map(
-          (value) =>
-              DropdownMenuItem<T>(value: value, child: Text(label(value))),
-        ),
-      ],
-      onChanged: changed,
-    ),
-  );
 }
