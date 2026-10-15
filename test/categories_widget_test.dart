@@ -66,6 +66,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('emoji picker scrolls and saves with the keyboard open', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpWidget(app(const CategoriesScreen()));
+    await finishDatabaseWork(tester);
+    await tester.tap(find.text('Add Category'));
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'My health expenses');
+    final healthEmoji = find.text('\u{1f3e5}');
+    await tester.ensureVisible(healthEmoji);
+    await tester.pumpAndSettle();
+    await tester.tap(healthEmoji);
+    await tester.ensureVisible(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Create'));
+    await finishDatabaseWork(tester);
+    final saved = await tester.runAsync(LocalStorageService.getAllCategories);
+    expect(saved, hasLength(1));
+    expect(saved!.single.name, 'My health expenses');
+    expect(saved.single.emoji, '\u{1f3e5}');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'adding first budget opens category setup when catalog is empty',
     (tester) async {

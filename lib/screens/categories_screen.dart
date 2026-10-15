@@ -21,7 +21,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   bool _saving = false;
   String? _error;
 
-  // Predefined emoji options for quick pick
+  // Emoji choices only; category names and assignments remain user-defined.
   static const _emojiOptions = [
     '🏷️',
     '🏋️',
@@ -53,6 +53,24 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     '🛠️',
     '🎁',
     '🏡',
+    '💵', // Cashback
+    '🤝', // Chitti commitments
+    '💳', // Credit card bills
+    '📅', // Daily transactions
+    '🍽️', // Dining
+    '🎓', // Education
+    '🏦', // EMI and loans
+    '👪', // Family support
+    '🍔', // Food and dining
+    '⛽', // Fuel
+    '🎉', // Fun activities
+    '🏥', // Health
+    '🛡️', // Insurance
+    '📈', // Long-term investments
+    '💼', // Salary
+    '🔁', // Subscriptions
+    '🔄', // Transfers
+    '❓', // Uncategorized
   ];
 
   static const _colorOptions = [
@@ -325,7 +343,7 @@ class _CategoryEditorState extends State<_CategoryEditor> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isEdit = widget.existing != null;
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         16,
         16,
