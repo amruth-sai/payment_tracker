@@ -3,7 +3,6 @@ import 'package:payment_tracker/models/transaction.dart';
 import 'package:payment_tracker/models/local_backup.dart';
 import 'package:payment_tracker/models/salary_cycle.dart';
 import 'package:payment_tracker/models/transaction_review.dart';
-import 'package:payment_tracker/models/merchant_rule_suggestion.dart';
 import 'package:payment_tracker/models/sms_processing_record.dart';
 import 'package:payment_tracker/services/category_service.dart';
 import 'package:payment_tracker/services/budget_service.dart';
@@ -16,21 +15,23 @@ import 'package:payment_tracker/services/transaction_window_service.dart';
 
 void main() {
   group('Message decisions', () {
-    test('nonpayment SMS has an explained skip without retaining its body',
-        () async {
-      final processor = SmsProcessingService();
-      final result = await processor.process(
-        id: 'sms-nonpayment',
-        sender: 'SHOP',
-        body: 'Your order is ready.',
-        date: DateTime(2026, 10, 6),
-      );
-      expect(result.transaction, isNull);
-      expect(result.review, isNull);
-      expect(result.record.outcome, SmsProcessingOutcome.skipped);
-      expect(result.record.reason, 'sender_not_recognized');
-      expect(result.record.rawMessage, isNull);
-    });
+    test(
+      'nonpayment SMS has an explained skip without retaining its body',
+      () async {
+        final processor = SmsProcessingService();
+        final result = await processor.process(
+          id: 'sms-nonpayment',
+          sender: 'SHOP',
+          body: 'Your order is ready.',
+          date: DateTime(2026, 10, 6),
+        );
+        expect(result.transaction, isNull);
+        expect(result.review, isNull);
+        expect(result.record.outcome, SmsProcessingOutcome.skipped);
+        expect(result.record.reason, 'sender_not_recognized');
+        expect(result.record.rawMessage, isNull);
+      },
+    );
 
     test('sent personal messages are not treated as bank alerts', () async {
       final processor = SmsProcessingService();
@@ -59,20 +60,22 @@ void main() {
       expect(result.record.rawMessage, isNull);
     });
 
-    test('payment OTP messages are skipped without storing their body',
-        () async {
-      final processor = SmsProcessingService();
-      final result = await processor.process(
-        id: 'sms-otp',
-        sender: 'HDFCBK',
-        body: 'OTP 123456 for your Rs.500 payment. Do not share this code.',
-        date: DateTime(2026, 10, 6),
-      );
-      expect(result.transaction, isNull);
-      expect(result.review, isNull);
-      expect(result.record.reason, 'security_message');
-      expect(result.record.rawMessage, isNull);
-    });
+    test(
+      'payment OTP messages are skipped without storing their body',
+      () async {
+        final processor = SmsProcessingService();
+        final result = await processor.process(
+          id: 'sms-otp',
+          sender: 'HDFCBK',
+          body: 'OTP 123456 for your Rs.500 payment. Do not share this code.',
+          date: DateTime(2026, 10, 6),
+        );
+        expect(result.transaction, isNull);
+        expect(result.review, isNull);
+        expect(result.record.reason, 'security_message');
+        expect(result.record.rawMessage, isNull);
+      },
+    );
 
     test('an unfamiliar payment sender is eligible for parsing', () {
       expect(
@@ -127,7 +130,7 @@ void main() {
         sender: 'BANK',
         date: DateTime(2026, 10, 6),
         rawMessage: 'INR 500 transaction alert.',
-        standardCategoryId: 'shopping',
+        categoryId: 'shopping',
         categorySource: 'merchant_rule',
         createdAt: DateTime(2026, 10, 6),
         isIgnored: true,
@@ -140,65 +143,69 @@ void main() {
   });
 
   group('Category precedence', () {
-    test('processing applies a merchant rule to a parsed transaction',
-        () async {
-      final rule = MerchantRule(
-        id: 'merchant-rule',
-        matchText: 'coffee shop',
-        merchant: 'My Cafe',
-        standardCategoryId: 'dining',
-        tag: 'weekday',
-        createdAt: DateTime(2026, 10, 6),
-      );
-      final processor = SmsProcessingService(
-        merchantRules: [rule],
-        transactionParser: (body, sender, date, id) async => _transaction(
-          id: id,
-          amount: 150,
-          type: TransactionType.debit,
-          sender: sender,
-          accountLast4: '1234',
-          date: date,
-          rawMessage: body,
-        ),
-      );
-      final result = await processor.process(
-        id: 'sms-cafe',
-        sender: 'NEWBANK',
-        body: 'INR 150 debited from account at coffee shop.',
-        date: DateTime(2026, 10, 6),
-      );
-      expect(result.transaction?.merchant, 'My Cafe');
-      expect(result.transaction?.standardCategoryId, 'dining');
-      expect(result.transaction?.categorySource, 'merchant_rule');
-      expect(result.transaction?.tag, 'weekday');
-      expect(result.record.outcome, SmsProcessingOutcome.transaction);
-    });
+    test(
+      'processing applies a merchant rule to a parsed transaction',
+      () async {
+        final rule = MerchantRule(
+          id: 'merchant-rule',
+          matchText: 'coffee shop',
+          merchant: 'My Cafe',
+          categoryId: 'dining',
+          tag: 'weekday',
+          createdAt: DateTime(2026, 10, 6),
+        );
+        final processor = SmsProcessingService(
+          merchantRules: [rule],
+          transactionParser: (body, sender, date, id) async => _transaction(
+            id: id,
+            amount: 150,
+            type: TransactionType.debit,
+            sender: sender,
+            accountLast4: '1234',
+            date: date,
+            rawMessage: body,
+          ),
+        );
+        final result = await processor.process(
+          id: 'sms-cafe',
+          sender: 'NEWBANK',
+          body: 'INR 150 debited from account at coffee shop.',
+          date: DateTime(2026, 10, 6),
+        );
+        expect(result.transaction?.merchant, 'My Cafe');
+        expect(result.transaction?.categoryId, 'dining');
+        expect(result.transaction?.categorySource, 'merchant_rule');
+        expect(result.transaction?.tag, 'weekday');
+        expect(result.record.outcome, SmsProcessingOutcome.transaction);
+      },
+    );
 
-    test('an ambiguous message goes to review with its merchant rule',
-        () async {
-      final rule = MerchantRule(
-        id: 'review-rule',
-        matchText: 'tea stall',
-        merchant: 'Tea Stall',
-        standardCategoryId: 'dining',
-        createdAt: DateTime(2026, 10, 6),
-      );
-      final processor = SmsProcessingService(
-        merchantRules: [rule],
-        transactionParser: (body, sender, date, id) async => null,
-      );
-      final result = await processor.process(
-        id: 'sms-tea',
-        sender: 'NEWBANK',
-        body: 'INR 50 transaction alert for account at tea stall.',
-        date: DateTime(2026, 10, 6),
-      );
-      expect(result.review?.merchant, 'Tea Stall');
-      expect(result.review?.standardCategoryId, 'dining');
-      expect(result.review?.categorySource, 'merchant_rule');
-      expect(result.record.outcome, SmsProcessingOutcome.needsReview);
-    });
+    test(
+      'an ambiguous message goes to review with its merchant rule',
+      () async {
+        final rule = MerchantRule(
+          id: 'review-rule',
+          matchText: 'tea stall',
+          merchant: 'Tea Stall',
+          categoryId: 'dining',
+          createdAt: DateTime(2026, 10, 6),
+        );
+        final processor = SmsProcessingService(
+          merchantRules: [rule],
+          transactionParser: (body, sender, date, id) async => null,
+        );
+        final result = await processor.process(
+          id: 'sms-tea',
+          sender: 'NEWBANK',
+          body: 'INR 50 transaction alert for account at tea stall.',
+          date: DateTime(2026, 10, 6),
+        );
+        expect(result.review?.merchant, 'Tea Stall');
+        expect(result.review?.categoryId, 'dining');
+        expect(result.review?.categorySource, 'merchant_rule');
+        expect(result.record.outcome, SmsProcessingOutcome.needsReview);
+      },
+    );
 
     test('the most specific matching merchant rule wins', () {
       final older = DateTime(2026, 10, 1);
@@ -243,13 +250,14 @@ void main() {
         'active',
       );
       expect(
-        CategoryService.matchingMerchantRule(
-            [rules.first], 'Paid at coffee shop'),
+        CategoryService.matchingMerchantRule([
+          rules.first,
+        ], 'Paid at coffee shop'),
         isNull,
       );
     });
 
-    test('merchant rules override automatic classification', () {
+    test('only user rules assign categories', () {
       final transaction = _transaction(
         id: 'category-1',
         amount: 150,
@@ -263,12 +271,12 @@ void main() {
         id: 'rule-1',
         matchText: 'cafe',
         merchant: 'Cafe',
-        standardCategoryId: 'shopping',
+        categoryId: 'shopping',
         createdAt: DateTime(2026, 10, 6),
       );
       final automatic = CategoryService.assign(transaction);
       final withRule = CategoryService.assign(transaction, merchantRule: rule);
-      expect(automatic.source, 'auto');
+      expect(automatic.source, isNull);
       expect(withRule.categoryId, 'shopping');
       expect(withRule.source, 'merchant_rule');
     });
@@ -329,25 +337,12 @@ void main() {
   });
 
   group('MerchantRule', () {
-    test('suggested rules start disabled and have stable distinct IDs', () {
-      const suggestions = MerchantRuleSuggestions.all;
-      expect(suggestions.length, greaterThanOrEqualTo(20));
-      expect(suggestions.map((item) => item.id).toSet().length,
-          suggestions.length);
-      for (final suggestion in suggestions) {
-        final rule = suggestion.toRule(DateTime(2026, 10, 7));
-        expect(rule.isEnabled, isFalse);
-        expect(rule.standardCategoryId, isNotNull);
-        expect(MerchantRuleSuggestions.byId(rule.id), same(suggestion));
-      }
-    });
-
     test('round-trips its locally stored values', () {
       final rule = MerchantRule(
         id: 'rule-1',
         matchText: 'tea stall',
         merchant: 'Tea Stall',
-        standardCategoryId: 'food_dining',
+        categoryId: 'food_dining',
         tag: 'Dining',
         createdAt: DateTime(2026, 8, 30),
       );
@@ -356,12 +351,12 @@ void main() {
 
       expect(restored.matchText, 'tea stall');
       expect(restored.merchant, 'Tea Stall');
-      expect(restored.standardCategoryId, 'food_dining');
+      expect(restored.categoryId, 'food_dining');
       expect(restored.tag, 'Dining');
       expect(restored.isEnabled, isTrue);
     });
 
-    test('disabled state is persisted and legacy rows stay enabled', () {
+    test('disabled state is persisted', () {
       final rule = MerchantRule(
         id: 'suggested-youtube',
         matchText: 'Youtube',
@@ -370,8 +365,6 @@ void main() {
         isEnabled: false,
       );
       expect(MerchantRule.fromMap(rule.toMap()).isEnabled, isFalse);
-      final oldRow = rule.toMap()..remove('is_enabled');
-      expect(MerchantRule.fromMap(oldRow).isEnabled, isTrue);
       expect(rule.copyWith(isEnabled: true).isEnabled, isTrue);
     });
   });
@@ -400,7 +393,7 @@ void main() {
     test('round-trips a versioned backup snapshot', () {
       final backup = LocalBackup(
         createdAt: DateTime.utc(2026, 8, 30, 10),
-        databaseVersion: 10,
+        databaseVersion: 1,
         tables: {
           'transactions': [
             {'id': 'transaction-1', 'amount': 500},
@@ -413,7 +406,7 @@ void main() {
 
       final restored = LocalBackup.fromJson(backup.toJson());
 
-      expect(restored.databaseVersion, 10);
+      expect(restored.databaseVersion, 1);
       expect(restored.transactionCount, 1);
       expect(restored.recordCount, 2);
       expect(restored.tables['user_settings']!.single['value'], 'INR');
@@ -459,7 +452,7 @@ void main() {
             accountLast4: '1111',
             date: DateTime(2026, 9, 4),
             rawMessage: 'Cafe payment',
-          ).copyWith(category: TransactionCategory.foodDining),
+          ).copyWith(categoryId: 'food_dining'),
           _transaction(
             id: 'subscription-september',
             amount: 80,
@@ -495,7 +488,7 @@ void main() {
             accountLast4: '1111',
             date: DateTime(2026, 10, 4),
             rawMessage: 'Cafe payment',
-          ).copyWith(category: TransactionCategory.foodDining),
+          ).copyWith(categoryId: 'food_dining'),
           _transaction(
             id: 'reimbursable-october',
             amount: 75,
@@ -560,34 +553,36 @@ void main() {
   });
 
   group('TransferService.detectPotentialTransfers', () {
-    test('pairs matching debit and credit transactions from different accounts',
-        () {
-      final date = DateTime(2026, 8, 30, 10);
-      final debit = _transaction(
-        id: 'debit',
-        amount: 5000,
-        type: TransactionType.debit,
-        sender: 'HDFC Bank',
-        accountLast4: '1111',
-        date: date,
-        rawMessage: 'IMPS transfer sent',
-      );
-      final credit = _transaction(
-        id: 'credit',
-        amount: 5000,
-        type: TransactionType.credit,
-        sender: 'ICICI Bank',
-        accountLast4: '2222',
-        date: date.add(const Duration(minutes: 2)),
-        rawMessage: 'IMPS transfer received',
-      );
+    test(
+      'pairs matching debit and credit transactions from different accounts',
+      () {
+        final date = DateTime(2026, 8, 30, 10);
+        final debit = _transaction(
+          id: 'debit',
+          amount: 5000,
+          type: TransactionType.debit,
+          sender: 'HDFC Bank',
+          accountLast4: '1111',
+          date: date,
+          rawMessage: 'IMPS transfer sent',
+        );
+        final credit = _transaction(
+          id: 'credit',
+          amount: 5000,
+          type: TransactionType.credit,
+          sender: 'ICICI Bank',
+          accountLast4: '2222',
+          date: date.add(const Duration(minutes: 2)),
+          rawMessage: 'IMPS transfer received',
+        );
 
-      final pairs = TransferService.detectPotentialTransfers([debit, credit]);
+        final pairs = TransferService.detectPotentialTransfers([debit, credit]);
 
-      expect(pairs, hasLength(1));
-      expect(pairs.single.debitTransaction.id, 'debit');
-      expect(pairs.single.creditTransaction.id, 'credit');
-    });
+        expect(pairs, hasLength(1));
+        expect(pairs.single.debitTransaction.id, 'debit');
+        expect(pairs.single.creditTransaction.id, 'credit');
+      },
+    );
   });
 
   group('TransactionExportService.buildExport', () {
@@ -634,14 +629,14 @@ void main() {
 
   group('TransactionWindowService', () {
     Transaction payment(String id, DateTime date) => _transaction(
-          id: id,
-          amount: 100,
-          type: TransactionType.debit,
-          sender: 'HDFC',
-          accountLast4: '1234',
-          date: date,
-          rawMessage: 'payment',
-        );
+      id: id,
+      amount: 100,
+      type: TransactionType.debit,
+      sender: 'HDFC',
+      accountLast4: '1234',
+      date: date,
+      rawMessage: 'payment',
+    );
 
     test('date range includes the entire first and last day', () {
       final rows = [
@@ -677,21 +672,21 @@ void main() {
 
   group('Budget coverage', () {
     Transaction payment(String id, DateTime date) => _transaction(
-          id: id,
-          amount: 100,
-          type: TransactionType.debit,
-          sender: 'HDFC',
-          accountLast4: '1234',
-          date: date,
-          rawMessage: 'payment',
-        );
+      id: id,
+      amount: 100,
+      type: TransactionType.debit,
+      sender: 'HDFC',
+      accountLast4: '1234',
+      date: date,
+      rawMessage: 'payment',
+    );
 
-    test('My Category takes precedence over standard category', () {
-      final trip = payment('trip', DateTime(2026, 10, 7)).copyWith(
-        standardCategoryId: 'shopping',
-        customCategoryId: 'holiday',
-      );
-      expect(BudgetService.categoryIdForTransaction(trip), 'custom:holiday');
+    test('one category is used consistently for budgets', () {
+      final trip = payment(
+        'trip',
+        DateTime(2026, 10, 7),
+      ).copyWith(categoryId: 'holiday');
+      expect(BudgetService.categoryIdForTransaction(trip), 'holiday');
       expect(
         BudgetService.outsideBudgetTransactions(
           transactions: [trip],
@@ -702,7 +697,7 @@ void main() {
       expect(
         BudgetService.outsideBudgetTransactions(
           transactions: [trip],
-          budgetCategoryIds: {'custom:holiday'},
+          budgetCategoryIds: {'holiday'},
         ),
         isEmpty,
       );
@@ -713,9 +708,9 @@ void main() {
       final lastDay = DateTime(2026, 10, 31, 23, 59, 59, 999);
       final rows = [
         payment('earlier', DateTime(2026, 9, 30)),
-        payment('covered', firstDay).copyWith(standardCategoryId: 'shopping'),
+        payment('covered', firstDay).copyWith(categoryId: 'shopping'),
         payment('uncategorized', lastDay),
-        payment('rent', firstDay).copyWith(standardCategoryId: 'rent'),
+        payment('rent', firstDay).copyWith(categoryId: 'rent'),
         payment('ignored', firstDay).copyWith(isIgnored: true),
         payment('transfer', firstDay).copyWith(transferGroupId: 'pair'),
         payment('salary', firstDay).copyWith(isSalary: true),

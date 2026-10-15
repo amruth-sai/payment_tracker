@@ -1,3 +1,4 @@
+import '../utils/format_utils.dart';
 // lib/screens/salary_cycle_screen.dart
 
 import 'package:flutter/material.dart';
@@ -36,29 +37,24 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
 
       // Get potential salary transactions
       final potential =
-          await LocalStorageService.getPotentialSalaryTransactions(
-        employerKeywords: [
-          'HCA',
-          'HCA GLOBAL',
-          'SALARY',
-          'HCA GLOBAL SERVICES'
-        ],
-        minimumAmount: 30000, // Assume salary is at least 30k
-      );
+          await LocalStorageService.getPotentialSalaryTransactions();
 
+      if (!mounted) return;
       setState(() {
         _cycles = cycles;
         _salaryCycleDay = cycleDay;
-        _potentialSalaries =
-            potential.take(20).toList(); // Show top 20 candidates
+        _potentialSalaries = potential
+            .take(20)
+            .toList(); // Show top 20 candidates
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
       }
     }
   }
@@ -114,7 +110,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
               subtitle: 'Tap a transaction to mark it as salary',
               trailing: TextButton(
                 onPressed: () => setState(
-                    () => _showPotentialSalaries = !_showPotentialSalaries),
+                  () => _showPotentialSalaries = !_showPotentialSalaries,
+                ),
                 child: Text(_showPotentialSalaries ? 'Hide' : 'Show'),
               ),
             ),
@@ -155,10 +152,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                 const SizedBox(height: 16),
                 const Text(
                   'No Salary Cycles Found',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -223,8 +217,11 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title,
-      {String? subtitle, Widget? trailing}) {
+  Widget _buildSectionHeader(
+    String title, {
+    String? subtitle,
+    Widget? trailing,
+  }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
       child: Row(
@@ -236,16 +233,13 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 if (subtitle != null)
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
               ],
             ),
@@ -331,8 +325,10 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
               Row(
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: cycle.isCurrent
                           ? Colors.blue.withValues(alpha: 0.2)
@@ -351,7 +347,9 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
@@ -414,8 +412,9 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                     '${spentPercentage.toStringAsFixed(0)}% spent',
                     style: TextStyle(
                       fontSize: 12,
-                      color:
-                          spentPercentage > 80 ? Colors.red : Colors.grey[600],
+                      color: spentPercentage > 80
+                          ? Colors.red
+                          : Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -425,10 +424,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'From: ${cycle.employer}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
               ],
             ],
@@ -482,9 +478,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
               ),
             FilledButton.tonal(
               onPressed: _showSalaryCycleDayPicker,
-              child: Text(
-                _salaryCycleDay != null ? '$_salaryCycleDay' : 'Set',
-              ),
+              child: Text(_salaryCycleDay != null ? '$_salaryCycleDay' : 'Set'),
             ),
           ],
         ),
@@ -534,8 +528,9 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
                                 fontWeight: isSelected
                                     ? FontWeight.bold
                                     : FontWeight.normal,
-                                color:
-                                    isSelected ? Colors.green : Colors.grey[600],
+                                color: isSelected
+                                    ? Colors.green
+                                    : Colors.grey[600],
                               ),
                             ),
                           );
@@ -602,6 +597,7 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -617,7 +613,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Regenerate Cycles?'),
         content: const Text(
-            'This will recreate all salary cycles based on marked transactions.'),
+          'This will recreate all salary cycles based on marked transactions.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -645,10 +642,8 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
         minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => _CycleDetailSheet(
-          cycle: cycle,
-          scrollController: scrollController,
-        ),
+        builder: (context, scrollController) =>
+            _CycleDetailSheet(cycle: cycle, scrollController: scrollController),
       ),
     );
   }
@@ -666,19 +661,12 @@ class _SalaryCycleScreenState extends State<SalaryCycleScreen> {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
-  String _formatAmount(double amount) {
-    if (amount >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(2)}K';
-    }
-    return amount.toStringAsFixed(0);
-  }
+  String _formatAmount(double amount) => FormatUtils.formatAmount(amount);
 }
 
 class _CycleStatItem extends StatelessWidget {
@@ -697,13 +685,7 @@ class _CycleStatItem extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 11,
-            ),
-          ),
+          Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
           const SizedBox(height: 2),
           Text(
             '₹${_formatAmount(amount)}',
@@ -718,14 +700,7 @@ class _CycleStatItem extends StatelessWidget {
     );
   }
 
-  String _formatAmount(double amount) {
-    if (amount.abs() >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount.abs() >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(2)}K';
-    }
-    return amount.toStringAsFixed(0);
-  }
+  String _formatAmount(double amount) => FormatUtils.formatAmount(amount);
 }
 
 class _CycleDetailSheet extends StatelessWidget {
@@ -739,9 +714,9 @@ class _CycleDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final debits = cycle.transactions.where((t) => t.isDebit).toList();
+    final debits = cycle.transactions.where((t) => t.isExpense).toList();
     final credits = cycle.transactions
-        .where((t) => t.isCredit && t.id != cycle.salaryTransactionId)
+        .where((t) => t.isIncome && t.id != cycle.salaryTransactionId)
         .toList();
 
     return Column(
@@ -827,7 +802,9 @@ class _CycleDetailSheet extends StatelessWidget {
   }
 
   Widget _buildTransactionList(
-      List<Transaction> transactions, ScrollController controller) {
+    List<Transaction> transactions,
+    ScrollController controller,
+  ) {
     if (transactions.isEmpty) {
       return Center(
         child: Text(
@@ -879,19 +856,12 @@ class _CycleDetailSheet extends StatelessWidget {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${date.day} ${months[date.month - 1]}';
   }
 
-  String _formatAmount(double amount) {
-    if (amount.abs() >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount.abs() >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(2)}K';
-    }
-    return amount.toStringAsFixed(0);
-  }
+  String _formatAmount(double amount) => FormatUtils.formatAmount(amount);
 }
 
 class _StatBox extends StatelessWidget {
@@ -921,10 +891,7 @@ class _StatBox extends StatelessWidget {
           children: [
             Text(
               label,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 11,
-              ),
+              style: TextStyle(color: Colors.grey[600], fontSize: 11),
             ),
             const SizedBox(height: 4),
             Text(
@@ -936,25 +903,12 @@ class _StatBox extends StatelessWidget {
               ),
             ),
             if (subtitle != null)
-              Text(
-                subtitle!,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 10,
-                ),
-              ),
+              Text(subtitle!, style: TextStyle(color: color, fontSize: 10)),
           ],
         ),
       ),
     );
   }
 
-  String _formatAmount(double amount) {
-    if (amount.abs() >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount.abs() >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(2)}K';
-    }
-    return amount.toStringAsFixed(0);
-  }
+  String _formatAmount(double amount) => FormatUtils.formatAmount(amount);
 }

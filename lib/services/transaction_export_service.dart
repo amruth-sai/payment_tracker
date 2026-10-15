@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/transaction.dart';
+import '../models/app_category.dart';
+import '../utils/money.dart';
 import 'local_storage_service.dart';
 
 class TransactionExportService {
@@ -21,6 +23,7 @@ class TransactionExportService {
     );
     final export = buildExport(
       transactions,
+      categories: await LocalStorageService.getAllCategories(),
       start: start,
       end: end,
       periodLabel: periodLabel,
@@ -32,7 +35,8 @@ class TransactionExportService {
       ShareParams(
         title: 'Payment Tracker transactions',
         subject: 'Payment Tracker transaction export',
-        text: 'Transaction export for spending analysis. Raw SMS content is excluded.',
+        text:
+            'Transaction export for spending analysis. Raw SMS content is excluded.',
         files: [
           XFile.fromData(
             utf8.encode(const JsonEncoder.withIndent('  ').convert(export)),
@@ -48,15 +52,23 @@ class TransactionExportService {
 
   static Map<String, dynamic> buildExport(
     List<Transaction> transactions, {
+    List<AppCategory> categories = const [],
     DateTime? start,
     DateTime? end,
     String? periodLabel,
   }) {
-    final includedTransactions = transactions.where((tx) => !tx.isIgnored).toList();
+    final includedTransactions = transactions
+        .where((tx) => !tx.isIgnored)
+        .toList();
 
     return {
       'format': 'payment_tracker_transaction_export',
       'version': 1,
+      'currency': 'INR',
+      'categories': [
+        for (final category in categories)
+          {'id': category.id, 'name': category.name},
+      ],
       'exported_at': DateTime.now().toIso8601String(),
       'transaction_count': includedTransactions.length,
       'period': {
@@ -64,7 +76,8 @@ class TransactionExportService {
         'start': start?.toIso8601String(),
         'end': end?.toIso8601String(),
       },
-      'privacy_note': 'Raw SMS messages, balances, and reference IDs are excluded.',
+      'privacy_note':
+          'Raw SMS messages, balances, and reference IDs are excluded.',
       'transactions': includedTransactions.map(_transactionToExport).toList(),
     };
   }
@@ -73,13 +86,13 @@ class TransactionExportService {
     return {
       'date': tx.date.toIso8601String(),
       'amount': tx.amount,
+      'amount_paise': Money.toPaise(tx.amount),
       'type': tx.type.name,
       'source': tx.source.name,
       'merchant': tx.merchant,
       'sender': tx.sender,
       'account_last4': tx.accountLast4,
-      'category_id': tx.effectiveStandardCategoryId,
-      'custom_category_id': tx.customCategoryId,
+      'category_id': tx.categoryId,
       'tag': tx.tag,
       'note': tx.note,
       'is_salary': tx.isSalary,

@@ -33,7 +33,9 @@ class MergedTransferCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: onTap != null
             ? () {
-                debugPrint('🔄 MergedTransferCard tapped for group: ${mergedTransfer.transferGroupId}');
+                debugPrint(
+                  '🔄 MergedTransferCard tapped for group: ${mergedTransfer.transferGroupId}',
+                );
                 onTap!();
               }
             : null,
@@ -113,7 +115,8 @@ class MergedTransferCard extends StatelessWidget {
                       runSpacing: 4,
                       children: [
                         _Chip(
-                          label: mergedTransfer.paymentSource.name.toUpperCase(),
+                          label: mergedTransfer.paymentSource.name
+                              .toUpperCase(),
                           color: theme.colorScheme.primary,
                         ),
                         const _Chip(
@@ -121,10 +124,12 @@ class MergedTransferCard extends StatelessWidget {
                           color: transferColor,
                         ),
                         if (mergedTransfer.combinedTags.isNotEmpty)
-                          ...mergedTransfer.combinedTags.map((tag) => _Chip(
-                            label: tag,
-                            color: theme.colorScheme.tertiary,
-                          )),
+                          ...mergedTransfer.combinedTags.map(
+                            (tag) => _Chip(
+                              label: tag,
+                              color: theme.colorScheme.tertiary,
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 3),
@@ -153,7 +158,10 @@ class MergedTransferCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: transferColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -189,7 +197,8 @@ class MergedTransferCard extends StatelessWidget {
           // Swipe right → Ignore both transactions
           onSwipeIgnore!(mergedTransfer);
           return false;
-        } else if (direction == DismissDirection.endToStart && onSwipeUnmerge != null) {
+        } else if (direction == DismissDirection.endToStart &&
+            onSwipeUnmerge != null) {
           // Swipe left → Unmerge transfer
           onSwipeUnmerge!(mergedTransfer);
           return false;
@@ -197,7 +206,7 @@ class MergedTransferCard extends StatelessWidget {
         return false;
       },
       background: // Swipe right background (Ignore)
-          Container(
+      Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         decoration: BoxDecoration(
           color: Colors.orange,
@@ -222,7 +231,7 @@ class MergedTransferCard extends StatelessWidget {
         ),
       ),
       secondaryBackground: // Swipe left background (Unmerge)
-          Container(
+      Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         decoration: BoxDecoration(
           color: Colors.red,
@@ -242,11 +251,7 @@ class MergedTransferCard extends StatelessWidget {
               ),
             ),
             SizedBox(width: 8),
-            Icon(
-              Icons.call_split_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
+            Icon(Icons.call_split_rounded, color: Colors.white, size: 22),
           ],
         ),
       ),
@@ -342,10 +347,7 @@ class TransferPairSuggestionCard extends StatelessWidget {
             const SizedBox(height: 12),
 
             // Transfer details
-            Text(
-              transferPair.description,
-              style: theme.textTheme.bodyMedium,
-            ),
+            Text(transferPair.description, style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
 
             // Reasons

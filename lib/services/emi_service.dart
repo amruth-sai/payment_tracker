@@ -8,7 +8,7 @@ class EMIService {
   /// Detect EMI-like recurring payments.
   /// Looks for same merchant + similar amount recurring monthly.
   static List<DetectedEMI> detectEMIs(List<Transaction> transactions) {
-    final debits = transactions.where((t) => t.isDebit).toList();
+    final debits = transactions.where((t) => t.isExpense).toList();
     if (debits.length < 3) return [];
 
     // Group by merchant + round amount (within 2%)
@@ -38,13 +38,13 @@ class EMIService {
       }
 
       // At least half the intervals should be monthly (25-40 days)
-      final monthlyIntervals =
-          intervals.where((d) => d >= 25 && d <= 40).length;
+      final monthlyIntervals = intervals
+          .where((d) => d >= 25 && d <= 40)
+          .length;
       if (monthlyIntervals < intervals.length * 0.5) continue;
 
       // This looks like an EMI
-      final avgAmount =
-          txs.fold(0.0, (sum, t) => sum + t.amount) / txs.length;
+      final avgAmount = txs.totalAmount / txs.length;
       final avgDay =
           txs.map((t) => t.date.day).reduce((a, b) => a + b) ~/ txs.length;
       final merchant = (txs.first.merchant ?? txs.first.sender).trim();
@@ -55,15 +55,17 @@ class EMIService {
           .reduce((a, b) => a > b ? a : b);
       if (amountVariance > 0.10) continue; // Too much variance
 
-      emis.add(DetectedEMI(
-        id: 'emi_${merchant.toLowerCase().replaceAll(' ', '_')}_${avgAmount.toInt()}',
-        merchant: merchant,
-        amount: avgAmount,
-        dayOfMonth: avgDay,
-        occurrences: txs.map((t) => t.date).toList(),
-        totalDetected: txs.length,
-        isActive: _isRecentlyActive(txs),
-      ));
+      emis.add(
+        DetectedEMI(
+          id: 'emi_${merchant.toLowerCase().replaceAll(' ', '_')}_${avgAmount.toInt()}',
+          merchant: merchant,
+          amount: avgAmount,
+          dayOfMonth: avgDay,
+          occurrences: txs.map((t) => t.date).toList(),
+          totalDetected: txs.length,
+          isActive: _isRecentlyActive(txs),
+        ),
+      );
     }
 
     // Sort by amount descending
@@ -74,14 +76,14 @@ class EMIService {
   /// Check if the last occurrence is within 45 days.
   static bool _isRecentlyActive(List<Transaction> txs) {
     if (txs.isEmpty) return false;
-    final lastDate = txs.map((t) => t.date).reduce((a, b) => a.isAfter(b) ? a : b);
+    final lastDate = txs
+        .map((t) => t.date)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
     return DateTime.now().difference(lastDate).inDays <= 45;
   }
 
   /// Calculate total monthly EMI burden.
   static double totalMonthlyBurden(List<DetectedEMI> emis) {
-    return emis
-        .where((e) => e.isActive)
-        .fold(0.0, (sum, e) => sum + e.amount);
+    return emis.where((e) => e.isActive).fold(0.0, (sum, e) => sum + e.amount);
   }
 }

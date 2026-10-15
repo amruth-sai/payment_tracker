@@ -4,12 +4,13 @@ import '../models/transaction_review.dart';
 import 'category_service.dart';
 import 'sms_parser.dart';
 
-typedef SmsTransactionParser = Future<Transaction?> Function(
-  String body,
-  String sender,
-  DateTime date,
-  String id,
-);
+typedef SmsTransactionParser =
+    Future<Transaction?> Function(
+      String body,
+      String sender,
+      DateTime date,
+      String id,
+    );
 
 class SmsProcessingResult {
   const SmsProcessingResult({
@@ -54,7 +55,8 @@ class SmsProcessingService {
     }
     Transaction? transaction;
     TransactionReview? review;
-    final isCandidate = (!isSent || SmsParser.isBankSms(sender)) &&
+    final isCandidate =
+        (!isSent || SmsParser.isBankSms(sender)) &&
         SmsParser.isLikelyPaymentMessage(sender, body);
     if (isCandidate) {
       transaction = await _transactionParser(body, sender, date, id);
@@ -65,18 +67,17 @@ class SmsProcessingService {
 
     if (transaction != null) {
       final rule = CategoryService.matchingMerchantRule(merchantRules, body);
-      final assignment = CategoryService.assign(transaction, merchantRule: rule);
-      final legacyCategory = TransactionCategory.fromStandardCategoryId(
-        assignment.categoryId,
+      final assignment = CategoryService.assign(
+        transaction,
+        merchantRule: rule,
       );
       return SmsProcessingResult(
         transaction: transaction.copyWith(
           merchant: rule?.merchant,
-          category: legacyCategory,
-          standardCategoryId: assignment.categoryId,
+          categoryId: assignment.categoryId,
           categorySource: assignment.source,
           tag: rule?.tag,
-          clearCategory: legacyCategory == null,
+          clearCategory: assignment.categoryId == null,
         ),
         record: SmsProcessingRecord(
           smsId: id,
@@ -94,10 +95,8 @@ class SmsProcessingService {
       return SmsProcessingResult(
         review: review.copyWith(
           merchant: rule?.merchant,
-          standardCategoryId: rule?.standardCategoryId,
-          categorySource: rule?.standardCategoryId == null
-              ? null
-              : 'merchant_rule',
+          categoryId: rule?.categoryId,
+          categorySource: rule?.categoryId == null ? null : 'merchant_rule',
           tag: rule?.tag,
         ),
         record: SmsProcessingRecord(

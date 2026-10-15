@@ -16,7 +16,7 @@ class TransferConstants {
     'neft',
     'imps',
     'rtgs',
-    'fund transfer'
+    'fund transfer',
   ];
 
   // UI text constants

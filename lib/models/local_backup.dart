@@ -9,7 +9,7 @@ class LocalBackup {
     required this.tables,
   });
 
-  static const format = 'payment_tracker_local_backup';
+  static const format = 'payment_tracker_release_backup';
   static const formatVersion = 1;
 
   final DateTime createdAt;
@@ -18,10 +18,8 @@ class LocalBackup {
 
   int get transactionCount => tables['transactions']?.length ?? 0;
 
-  int get recordCount => tables.values.fold(
-        0,
-        (count, rows) => count + rows.length,
-      );
+  int get recordCount =>
+      tables.values.fold(0, (count, rows) => count + rows.length);
 
   Map<String, dynamic> toJson() {
     return {
@@ -35,13 +33,15 @@ class LocalBackup {
 
   factory LocalBackup.fromJson(Map<String, dynamic> json) {
     if (json['format'] != format || json['format_version'] != formatVersion) {
-      throw const FormatException('This is not a supported Payment Tracker backup.');
+      throw const FormatException(
+        'This is not a supported Payment Tracker backup.',
+      );
     }
 
     final createdAt = DateTime.tryParse(json['created_at'] as String? ?? '');
     final databaseVersion = json['database_version'];
     final rawTables = json['tables'];
-    if (createdAt == null || databaseVersion is! num || rawTables is! Map) {
+    if (createdAt == null || databaseVersion is! int || rawTables is! Map) {
       throw const FormatException('The backup file is incomplete.');
     }
 
@@ -50,19 +50,17 @@ class LocalBackup {
       if (entry.key is! String || entry.value is! List) {
         throw const FormatException('The backup contains invalid table data.');
       }
-      tables[entry.key as String] = (entry.value as List)
-          .map((row) {
-            if (row is! Map) {
-              throw const FormatException('The backup contains an invalid record.');
-            }
-            return Map<String, dynamic>.from(row);
-          })
-          .toList();
+      tables[entry.key as String] = (entry.value as List).map((row) {
+        if (row is! Map) {
+          throw const FormatException('The backup contains an invalid record.');
+        }
+        return Map<String, dynamic>.from(row);
+      }).toList();
     }
 
     return LocalBackup(
       createdAt: createdAt,
-      databaseVersion: databaseVersion.toInt(),
+      databaseVersion: databaseVersion,
       tables: tables,
     );
   }

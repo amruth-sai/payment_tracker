@@ -24,16 +24,16 @@ class SmsProcessingRecord {
   final String? rawMessage;
 
   Map<String, Object?> toMap() => {
-        'sms_id': smsId,
-        'sender': sender,
-        'date': date.millisecondsSinceEpoch,
-        'outcome': outcome.name,
-        'reason': reason,
-        'folder': folder,
-        'raw_message': rawMessage,
-        'parser_version': 1,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      };
+    'sms_id': smsId,
+    'sender': sender,
+    'date': date.millisecondsSinceEpoch,
+    'outcome': outcome.name,
+    'reason': reason,
+    'folder': folder,
+    'raw_message': rawMessage,
+    'parser_version': 1,
+    'updated_at': DateTime.now().millisecondsSinceEpoch,
+  };
 
   factory SmsProcessingRecord.fromMap(Map<String, dynamic> row) {
     return SmsProcessingRecord(
@@ -42,7 +42,6 @@ class SmsProcessingRecord {
       date: DateTime.fromMillisecondsSinceEpoch(row['date'] as int),
       outcome: SmsProcessingOutcome.values.firstWhere(
         (value) => value.name == row['outcome'],
-        orElse: () => SmsProcessingOutcome.skipped,
       ),
       reason: row['reason'] as String,
       folder: row['folder'] as String? ?? 'unknown',

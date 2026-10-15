@@ -12,7 +12,7 @@ class AnomalyService {
     final alerts = <AppAlert>[];
     if (transactions.length < 5) return alerts;
 
-    final debits = transactions.where((t) => t.isDebit).toList();
+    final debits = transactions.where((t) => t.isExpense).toList();
     if (debits.isEmpty) return alerts;
 
     final now = DateTime.now();
@@ -32,19 +32,21 @@ class AnomalyService {
       if (allTxs.length < 3) continue; // Need history
 
       final recentTxs = allTxs.where((t) => t.date.isAfter(weekAgo)).toList();
-      final historicalTxs =
-          allTxs.where((t) => t.date.isBefore(weekAgo)).toList();
+      final historicalTxs = allTxs
+          .where((t) => t.date.isBefore(weekAgo))
+          .toList();
 
       if (recentTxs.isEmpty || historicalTxs.isEmpty) continue;
 
       // Calculate weekly averages
-      final recentTotal = recentTxs.fold(0.0, (sum, t) => sum + t.amount);
+      final recentTotal = recentTxs.totalAmount;
+      historicalTxs.sort((a, b) => a.date.compareTo(b.date));
       final historicalWeeks = max(
-          1.0,
-          historicalTxs.last.date.difference(historicalTxs.first.date).inDays /
-              7.0);
-      final historicalWeeklyAvg =
-          historicalTxs.fold(0.0, (sum, t) => sum + t.amount) / historicalWeeks;
+        1.0,
+        historicalTxs.last.date.difference(historicalTxs.first.date).inDays /
+            7.0,
+      );
+      final historicalWeeklyAvg = historicalTxs.totalAmount / historicalWeeks;
 
       if (historicalWeeklyAvg <= 0) continue;
 
@@ -53,17 +55,20 @@ class AnomalyService {
       // Flag if spending is 2x or more than usual
       if (ratio >= 2.0) {
         final displayName = _capitalize(merchant);
-        alerts.add(AppAlert(
-          id: 'anomaly_${merchant}_${now.millisecondsSinceEpoch}',
-          type: AlertType.anomaly,
-          title: 'Unusual Spending: $displayName',
-          message:
-              'You spent ₹${recentTotal.toStringAsFixed(0)} at $displayName this week — '
-              '${ratio.toStringAsFixed(1)}x more than your usual weekly average of '
-              '₹${historicalWeeklyAvg.toStringAsFixed(0)}.',
-          severity:
-              ratio >= 3.0 ? AlertSeverity.critical : AlertSeverity.warning,
-        ));
+        alerts.add(
+          AppAlert(
+            id: 'anomaly_${merchant}_${now.year}-${now.month}-${now.day}',
+            type: AlertType.anomaly,
+            title: 'Unusual Spending: $displayName',
+            message:
+                'You spent ₹${recentTotal.toStringAsFixed(0)} at $displayName this week — '
+                '${ratio.toStringAsFixed(1)}x more than your usual weekly average of '
+                '₹${historicalWeeklyAvg.toStringAsFixed(0)}.',
+            severity: ratio >= 3.0
+                ? AlertSeverity.critical
+                : AlertSeverity.warning,
+          ),
+        );
       }
     }
 
@@ -73,15 +78,18 @@ class AnomalyService {
       final key = (tx.merchant ?? tx.sender).toLowerCase().trim();
       final history = merchantHistory[key] ?? [];
       if (history.length == 1 && tx.amount > 5000) {
-        alerts.add(AppAlert(
-          id: 'new_merchant_${tx.id}',
-          type: AlertType.anomaly,
-          title: 'New Merchant Charge',
-          message: 'First-time charge of ₹${tx.amount.toStringAsFixed(0)} from '
-              '${_capitalize(key)}.',
-          severity: AlertSeverity.info,
-          transactionId: tx.id,
-        ));
+        alerts.add(
+          AppAlert(
+            id: 'new_merchant_${tx.id}',
+            type: AlertType.anomaly,
+            title: 'New Merchant Charge',
+            message:
+                'First-time charge of ₹${tx.amount.toStringAsFixed(0)} from '
+                '${_capitalize(key)}.',
+            severity: AlertSeverity.info,
+            transactionId: tx.id,
+          ),
+        );
       }
     }
 
@@ -92,7 +100,11 @@ class AnomalyService {
   /// Same amount + same sender within 5 minutes.
   static List<AppAlert> detectDuplicates(List<Transaction> transactions) {
     final alerts = <AppAlert>[];
-    final sorted = [...transactions]..sort((a, b) => a.date.compareTo(b.date));
+    final sorted =
+        transactions
+            .where((tx) => !tx.isIgnored && !tx.isPartOfTransfer)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     final seen = <String>{};
 
     for (int i = 0; i < sorted.length; i++) {
@@ -107,16 +119,18 @@ class AnomalyService {
           if (seen.contains(pairKey)) continue;
           seen.add(pairKey);
 
-          alerts.add(AppAlert(
-            id: 'dup_$pairKey',
-            type: AlertType.duplicate,
-            title: 'Possible Duplicate',
-            message:
-                '₹${sorted[i].amount.toStringAsFixed(0)} from ${sorted[i].sender} '
-                'appeared twice within ${diff.inMinutes} minutes.',
-            severity: AlertSeverity.warning,
-            transactionId: sorted[i].id,
-          ));
+          alerts.add(
+            AppAlert(
+              id: 'dup_$pairKey',
+              type: AlertType.duplicate,
+              title: 'Possible Duplicate',
+              message:
+                  '₹${sorted[i].amount.toStringAsFixed(0)} from ${sorted[i].sender} '
+                  'appeared twice within ${diff.inMinutes} minutes.',
+              severity: AlertSeverity.warning,
+              transactionId: sorted[i].id,
+            ),
+          );
         }
       }
     }
@@ -131,25 +145,27 @@ class AnomalyService {
     double? monthlyBudgetSpent,
   ) {
     final now = DateTime.now();
-    final yesterday = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 1));
+    final yesterday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 1));
     final yesterdayEnd = DateTime(now.year, now.month, now.day);
 
     final yesterdayTxs = transactions
         .where(
-            (t) => t.date.isAfter(yesterday) && t.date.isBefore(yesterdayEnd))
+          (t) => !t.date.isBefore(yesterday) && t.date.isBefore(yesterdayEnd),
+        )
         .toList();
 
-    final totalSpent = yesterdayTxs
-        .where((t) => t.isDebit)
-        .fold(0.0, (sum, t) => sum + t.amount);
+    final totalSpent = yesterdayTxs.where((t) => t.isExpense).totalAmount;
 
     if (totalSpent <= 0) return null;
 
     String budgetInfo = '';
     if (monthlyBudgetTotal != null && monthlyBudgetTotal > 0) {
-      final usedPct =
-          ((monthlyBudgetSpent ?? 0) / monthlyBudgetTotal * 100).clamp(0, 999);
+      final usedPct = ((monthlyBudgetSpent ?? 0) / monthlyBudgetTotal * 100)
+          .clamp(0, 999);
       budgetInfo =
           ' This month you have used ${usedPct.toStringAsFixed(0)}% of your total budget.';
     }
@@ -158,8 +174,9 @@ class AnomalyService {
       id: 'digest_${yesterday.millisecondsSinceEpoch}',
       type: AlertType.dailyDigest,
       title: 'Daily Digest',
-      message: 'Yesterday you spent ₹${totalSpent.toStringAsFixed(0)} across '
-          '${yesterdayTxs.where((t) => t.isDebit).length} transactions.$budgetInfo',
+      message:
+          'Yesterday you spent ₹${totalSpent.toStringAsFixed(0)} across '
+          '${yesterdayTxs.where((t) => t.isExpense).length} transactions.$budgetInfo',
       severity: AlertSeverity.info,
     );
   }

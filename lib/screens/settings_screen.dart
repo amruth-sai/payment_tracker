@@ -80,12 +80,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.category_outlined),
-                    title: const Text('Refresh automatic categories'),
+                    title: const Text('Apply merchant rule categories'),
                     subtitle: const Text(
-                      'Preview new rule matches before updating automatic labels. '
+                      'Preview matches from your merchant rules. '
                       'Your category choices stay in place.',
                     ),
-                    onTap: _refreshAutomaticCategories,
+                    onTap: _refreshRuleCategories,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -150,7 +150,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Icon(Icons.lock_outline),
                             label: Text(
@@ -171,7 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Icon(Icons.settings_backup_restore),
                             label: Text(
@@ -207,13 +211,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed:
-                                _isExporting ? null : _exportTransactions,
+                            onPressed: _isExporting
+                                ? null
+                                : _exportTransactions,
                             icon: _isExporting
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Icon(Icons.ios_share),
                             label: Text(
@@ -301,13 +308,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _refreshAutomaticCategories() async {
+  Future<void> _refreshRuleCategories() async {
     try {
-      final changes = await LocalStorageService.previewAutomaticCategories();
+      final changes = await LocalStorageService.previewRuleCategories();
+      final categories = {
+        for (final category in await LocalStorageService.getAllCategories())
+          category.id: category.name,
+      };
       if (!mounted) return;
       if (changes.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Automatic categories are up to date.')),
+          const SnackBar(
+            content: Text('Categories already match your merchant rules.'),
+          ),
         );
         return;
       }
@@ -320,12 +333,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Only automatic and merchant rule categories will change.'),
+                const Text(
+                  'Apply your merchant rules to transactions without a manual category decision.',
+                ),
                 const SizedBox(height: 12),
-                ...changes.take(5).map((change) => Text(
-                  '${change.merchant}: ${change.oldCategoryId ?? 'none'} → '
-                  '${change.assignment.categoryId} (${change.assignment.source})',
-                )),
+                ...changes
+                    .take(5)
+                    .map(
+                      (change) => Text(
+                        '${change.merchant}: ${categories[change.oldCategoryId] ?? 'Uncategorized'} → '
+                        '${categories[change.assignment.categoryId] ?? 'Uncategorized'}',
+                      ),
+                    ),
                 if (changes.length > 5) Text('And ${changes.length - 5} more…'),
               ],
             ),
@@ -343,7 +362,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
       if (confirmed != true || !mounted) return;
-      await LocalStorageService.applyAutomaticCategories(changes);
+      await LocalStorageService.applyRuleCategories(changes);
       if (!mounted) return;
       await context.read<SmsService>().reloadFromCache();
       if (!mounted) return;
@@ -420,7 +439,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await BackupService.createEncryptedBackup(password);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Encrypted backup saved. Keep its password safe.')),
+        const SnackBar(
+          content: Text('Encrypted backup saved. Keep its password safe.'),
+        ),
       );
     } catch (error) {
       _showBackupError(error, fallback: 'Unable to create the backup.');
@@ -440,7 +461,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final password = await _askForBackupPassword(confirm: false);
       if (password == null || !mounted) return;
 
-      final backup = await BackupService.decryptBackup(encryptedContent, password);
+      final backup = await BackupService.decryptBackup(
+        encryptedContent,
+        password,
+      );
       if (!mounted) return;
 
       final mode = await _chooseRestoreMode(backup);
@@ -451,6 +475,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       if (!mounted) return;
 
+      if (context.read<SmsService>().isLoading) {
+        throw StateError(
+          'Wait for the message scan to finish before restoring.',
+        );
+      }
       final records = await LocalStorageService.restoreBackup(backup, mode);
       if (!mounted) return;
       await context.read<SmsService>().reloadFromCache();
@@ -503,7 +532,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 TextField(
                   controller: confirmationController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Confirm password'),
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm password',
+                  ),
                 ),
               ],
               if (error != null) ...[
@@ -546,9 +577,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<BackupRestoreMode?> _chooseRestoreMode(LocalBackup backup) {
-    final formattedDate = DateFormat('d MMM yyyy, h:mm a').format(
-      backup.createdAt.toLocal(),
-    );
+    final formattedDate = DateFormat(
+      'd MMM yyyy, h:mm a',
+    ).format(backup.createdAt.toLocal());
     return showDialog<BackupRestoreMode>(
       context: context,
       builder: (context) => AlertDialog(
@@ -621,7 +652,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     final message = error is FormatException ? error.message : fallback;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<_ExportPeriod?> _chooseExportPeriod() async {
@@ -724,9 +757,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 (cycle) => SimpleDialogOption(
                   onPressed: () => Navigator.pop(context, cycle),
                   child: _ExportOption(
-                    icon: cycle.isCurrent
-                        ? Icons.circle
-                        : Icons.calendar_month,
+                    icon: cycle.isCurrent ? Icons.circle : Icons.calendar_month,
                     title: cycle.cycleLabel,
                     subtitle: _salaryCycleRangeLabel(cycle),
                   ),
@@ -741,7 +772,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return _ExportPeriod(
         label: 'Salary month: ${cycle.cycleLabel}',
         start: cycle.startDate,
-        end: cycle.endDate ?? DateTime.now(),
+        end:
+            cycle.endDate?.subtract(const Duration(milliseconds: 1)) ??
+            DateTime.now(),
       );
     } catch (_) {
       if (mounted) {

@@ -7,7 +7,6 @@ import '../services/local_storage_service.dart';
 import '../services/sms_parser.dart';
 
 class SenderDiscoveryService {
-
   /// Analyze SMS messages within date range to discover all senders
   static Future<List<DiscoveredSender>> discoverSenders({
     required DateTime fromDate,
@@ -51,7 +50,9 @@ class SenderDiscoveryService {
       if (messages.isEmpty) continue;
 
       // Sort messages by date
-      messages.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+      messages.sort(
+        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+      );
 
       final firstSeen = messages.first['date'] as DateTime;
       final lastSeen = messages.last['date'] as DateTime;
@@ -66,15 +67,17 @@ class SenderDiscoveryService {
       // Generate suggestions based on sender ID and message content
       final suggestions = _generateAccountSuggestions(senderId, sampleMessages);
 
-      discoveredSenders.add(DiscoveredSender(
-        senderId: senderId,
-        messageCount: messages.length,
-        firstSeen: firstSeen,
-        lastSeen: lastSeen,
-        sampleMessages: sampleMessages,
-        suggestedAccountName: suggestions['name'],
-        suggestedAccountType: suggestions['type'],
-      ));
+      discoveredSenders.add(
+        DiscoveredSender(
+          senderId: senderId,
+          messageCount: messages.length,
+          firstSeen: firstSeen,
+          lastSeen: lastSeen,
+          sampleMessages: sampleMessages,
+          suggestedAccountName: suggestions['name'],
+          suggestedAccountType: suggestions['type'],
+        ),
+      );
     }
 
     // Sort by message count (most active senders first)
@@ -84,7 +87,10 @@ class SenderDiscoveryService {
   }
 
   /// Generate intelligent suggestions for account name and type based on sender ID and messages
-  static Map<String, String?> _generateAccountSuggestions(String senderId, List<String> sampleMessages) {
+  static Map<String, String?> _generateAccountSuggestions(
+    String senderId,
+    List<String> sampleMessages,
+  ) {
     final senderUpper = senderId.toUpperCase();
 
     // Bank name mapping
@@ -128,8 +134,12 @@ class SenderDiscoveryService {
     final creditCardIndicators = ['CC', 'CARD', 'CREDIT', 'ONECARD', 'SLICE'];
     final bankAccountIndicators = ['BANK', 'SAVINGS', 'CURRENT', 'ACE'];
 
-    bool hasCardIndicators = creditCardIndicators.any((indicator) => senderUpper.contains(indicator));
-    bool hasBankIndicators = bankAccountIndicators.any((indicator) => senderUpper.contains(indicator));
+    bool hasCardIndicators = creditCardIndicators.any(
+      (indicator) => senderUpper.contains(indicator),
+    );
+    bool hasBankIndicators = bankAccountIndicators.any(
+      (indicator) => senderUpper.contains(indicator),
+    );
 
     // Check message content for additional clues
     for (final message in sampleMessages) {
@@ -162,10 +172,7 @@ class SenderDiscoveryService {
       }
     }
 
-    return {
-      'name': suggestedName,
-      'type': suggestedType,
-    };
+    return {'name': suggestedName, 'type': suggestedType};
   }
 
   /// Get existing sender mappings from database
@@ -187,10 +194,9 @@ class SenderDiscoveryService {
           .where((mapping) => mapping.accountId == account.id)
           .toList();
 
-      accountsWithSenders.add(AccountWithSenders(
-        account: account,
-        senderMappings: accountSenders,
-      ));
+      accountsWithSenders.add(
+        AccountWithSenders(account: account, senderMappings: accountSenders),
+      );
     }
 
     return accountsWithSenders;
@@ -212,16 +218,21 @@ class SenderDiscoveryService {
 
     final db = await LocalStorageService.database;
     await db.insert('sender_mappings', mapping.toMap());
+    SmsParser.clearSenderMappingCache();
   }
 
   /// Remove sender assignment from an account
-  static Future<void> removeSenderFromAccount(String senderId, String accountId) async {
+  static Future<void> removeSenderFromAccount(
+    String senderId,
+    String accountId,
+  ) async {
     final db = await LocalStorageService.database;
     await db.delete(
       'sender_mappings',
       where: 'sender_id = ? AND account_id = ?',
       whereArgs: [senderId, accountId],
     );
+    SmsParser.clearSenderMappingCache();
   }
 
   /// Move a sender from one account to another
@@ -251,6 +262,7 @@ class SenderDiscoveryService {
 
       await txn.insert('sender_mappings', mapping.toMap());
     });
+    SmsParser.clearSenderMappingCache();
   }
 
   /// Get the account ID for a given sender
@@ -282,12 +294,13 @@ class SenderDiscoveryService {
       WHERE sender IS NOT NULL
     ''');
 
-    final allSenders = senderRows
-        .map((row) => row['sender'] as String)
-        .toSet();
+    final allSenders = senderRows.map((row) => row['sender'] as String).toSet();
 
     // Get already assigned senders
-    final mappingRows = await db.query('sender_mappings', columns: ['sender_id']);
+    final mappingRows = await db.query(
+      'sender_mappings',
+      columns: ['sender_id'],
+    );
     final assignedSenders = mappingRows
         .map((row) => row['sender_id'] as String)
         .toSet();
@@ -297,7 +310,10 @@ class SenderDiscoveryService {
   }
 
   /// Reassign transactions when a sender is moved between accounts
-  static Future<void> reassignTransactionsForSender(String senderId, String newAccountId) async {
+  static Future<void> reassignTransactionsForSender(
+    String senderId,
+    String newAccountId,
+  ) async {
     final db = await LocalStorageService.database;
 
     await db.update(
@@ -312,9 +328,15 @@ class SenderDiscoveryService {
   static Future<Map<String, int>> getSenderAssignmentStats() async {
     final db = await LocalStorageService.database;
 
-    final totalSenders = await db.rawQuery('SELECT COUNT(DISTINCT sender) as count FROM transactions WHERE sender IS NOT NULL');
-    final assignedSenders = await db.rawQuery('SELECT COUNT(*) as count FROM sender_mappings');
-    final userAssigned = await db.rawQuery('SELECT COUNT(*) as count FROM sender_mappings WHERE is_user_assigned = 1');
+    final totalSenders = await db.rawQuery(
+      'SELECT COUNT(DISTINCT sender) as count FROM transactions WHERE sender IS NOT NULL',
+    );
+    final assignedSenders = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM sender_mappings',
+    );
+    final userAssigned = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM sender_mappings WHERE is_user_assigned = 1',
+    );
 
     return {
       'total_senders': (totalSenders.first['count'] as int?) ?? 0,

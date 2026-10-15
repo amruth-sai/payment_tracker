@@ -17,11 +17,14 @@ class MergedTransfer {
     required this.transferGroupId,
     required this.sourceTransaction,
     required this.destinationTransaction,
-  })  : date = sourceTransaction.date.isBefore(destinationTransaction.date)
-            ? sourceTransaction.date
-            : destinationTransaction.date,
-        amount = sourceTransaction.amount,
-        note = _combineNotes(sourceTransaction.note, destinationTransaction.note);
+  }) : date = sourceTransaction.date.isBefore(destinationTransaction.date)
+           ? sourceTransaction.date
+           : destinationTransaction.date,
+       amount = sourceTransaction.amount,
+       note = _combineNotes(
+         sourceTransaction.note,
+         destinationTransaction.note,
+       );
 
   /// Get the source account name (where money is coming from)
   String get sourceAccountName => sourceTransaction.accountId != null
@@ -119,7 +122,9 @@ class MergedTransfer {
 
     if (t1.id == t2.id) {
       assert(() {
-        debugPrint('Error: Attempting to merge transaction with itself: ${t1.id}');
+        debugPrint(
+          'Error: Attempting to merge transaction with itself: ${t1.id}',
+        );
         return true;
       }());
       return null;
@@ -167,7 +172,9 @@ class MergedTransfer {
     if (destination.transferPartnerId != null &&
         destination.transferPartnerId != source.id) {
       assert(() {
-        debugPrint('Warning: Transfer partner ID mismatch for ${destination.id}');
+        debugPrint(
+          'Warning: Transfer partner ID mismatch for ${destination.id}',
+        );
         return true;
       }());
     }
@@ -256,8 +263,7 @@ extension TransferMerging on List<Transaction> {
         if ((t1.isTransferSource && t2.isTransferDestination) ||
             (t1.isTransferDestination && t2.isTransferSource)) {
           isValidGroup = true;
-        } else if ((t1.isDebit && t2.isCredit) ||
-            (t1.isCredit && t2.isDebit)) {
+        } else if ((t1.isDebit && t2.isCredit) || (t1.isCredit && t2.isDebit)) {
           isValidGroup = true;
         }
 
@@ -271,7 +277,9 @@ extension TransferMerging on List<Transaction> {
     for (final transaction in this) {
       if (transaction.transferGroupId == null) {
         standalone.add(transaction);
-      } else if (!validMergedTransferIds.contains(transaction.transferGroupId)) {
+      } else if (!validMergedTransferIds.contains(
+        transaction.transferGroupId,
+      )) {
         standalone.add(transaction);
 
         assert(() {

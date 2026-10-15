@@ -1,3 +1,4 @@
+import '../utils/money.dart';
 // lib/models/emi.dart
 
 class DetectedEMI {
@@ -34,7 +35,7 @@ class DetectedEMI {
     return {
       'id': id,
       'merchant': merchant,
-      'amount': amount,
+      'amount': Money.toPaise(amount),
       'day_of_month': dayOfMonth,
       'occurrences': occurrences
           .map((d) => d.millisecondsSinceEpoch)
@@ -51,15 +52,17 @@ class DetectedEMI {
     final occurrences = occStr.isEmpty
         ? <DateTime>[]
         : occStr
-            .split(',')
-            .map((s) =>
-                DateTime.fromMillisecondsSinceEpoch(int.tryParse(s) ?? 0))
-            .toList();
+              .split(',')
+              .map(
+                (s) =>
+                    DateTime.fromMillisecondsSinceEpoch(int.tryParse(s) ?? 0),
+              )
+              .toList();
 
     return DetectedEMI(
       id: map['id'] as String,
       merchant: map['merchant'] as String,
-      amount: (map['amount'] as num).toDouble(),
+      amount: Money.fromPaise(map['amount']!),
       dayOfMonth: map['day_of_month'] as int,
       occurrences: occurrences,
       totalDetected: map['total_detected'] as int,

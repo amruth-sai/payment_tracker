@@ -88,8 +88,7 @@ class _NewTransactionsReviewSheetState
 
           // Header
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
               children: [
                 Container(
@@ -98,8 +97,11 @@ class _NewTransactionsReviewSheetState
                     color: theme.colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.mark_chat_unread_outlined,
-                      size: 22, color: theme.colorScheme.onPrimaryContainer),
+                  child: Icon(
+                    Icons.mark_chat_unread_outlined,
+                    size: 22,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -108,8 +110,9 @@ class _NewTransactionsReviewSheetState
                     children: [
                       Text(
                         '$count New Transaction${count > 1 ? 's' : ''} Found',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       Text(
                         _toIgnore.isEmpty
@@ -133,8 +136,7 @@ class _NewTransactionsReviewSheetState
           // Transaction list
           Flexible(
             child: ListView.separated(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: widget.transactions.length,
               separatorBuilder: (_, __) => const SizedBox(height: 6),
               itemBuilder: (context, index) {
@@ -173,7 +175,8 @@ class _NewTransactionsReviewSheetState
                               // Ignore ALL
                               setState(() {
                                 _toIgnore.addAll(
-                                    widget.transactions.map((t) => t.id));
+                                  widget.transactions.map((t) => t.id),
+                                );
                               });
                               _confirm();
                             },
@@ -190,11 +193,15 @@ class _NewTransactionsReviewSheetState
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white))
-                          : Text(_toIgnore.isEmpty
-                              ? 'Confirm All'
-                              : 'Confirm (ignore ${_toIgnore.length})'),
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              _toIgnore.isEmpty
+                                  ? 'Confirm All'
+                                  : 'Confirm (ignore ${_toIgnore.length})',
+                            ),
                     ),
                   ),
                 ],
@@ -240,13 +247,15 @@ class _ReviewTile extends StatelessWidget {
           ),
         ),
         child: ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 4,
+          ),
           leading: CircleAvatar(
             radius: 20,
             backgroundColor: amountColor.withValues(alpha: 0.15),
             child: Text(
-              tx.category?.emoji ?? (tx.isCredit ? '💰' : '💸'),
+              (tx.isCredit ? '💰' : '💸'),
               style: const TextStyle(fontSize: 18),
             ),
           ),

@@ -74,10 +74,12 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
     // Refresh in-memory list
     await context.read<SmsService>().reloadFromCache();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Tracking settings saved'),
-      backgroundColor: Colors.green,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Tracking settings saved'),
+        backgroundColor: Colors.green,
+      ),
+    );
     Navigator.pop(context);
   }
 
@@ -112,8 +114,7 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (ctx) => _TransactionPickerSheet(
-          transactions: _allTransactions),
+      builder: (ctx) => _TransactionPickerSheet(transactions: _allTransactions),
     );
     if (selected != null) {
       setState(() {
@@ -121,7 +122,10 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
         _trackFromTxId = selected.id;
         // Use the transaction's date as the from-date too
         _trackFromDate = DateTime(
-            selected.date.year, selected.date.month, selected.date.day);
+          selected.date.year,
+          selected.date.month,
+          selected.date.day,
+        );
       });
     }
   }
@@ -136,10 +140,7 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
         title: const Text('Tracking Start Point'),
         actions: [
           if (hasSettings)
-            TextButton(
-              onPressed: _clearAll,
-              child: const Text('Clear'),
-            ),
+            TextButton(onPressed: _clearAll, child: const Text('Clear')),
         ],
       ),
       body: _loading
@@ -153,23 +154,29 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color:
-                          theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+                      color: theme.colorScheme.primaryContainer.withValues(
+                        alpha: 0.4,
+                      ),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline,
-                            size: 20, color: theme.colorScheme.primary),
+                        Icon(
+                          Icons.info_outline,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             'Old SMS messages can contain outdated transactions. '
                             'Set a start point so only relevant transactions are included in summaries.',
                             style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer),
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
                           ),
                         ),
                       ],
@@ -185,34 +192,44 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
                       decoration: BoxDecoration(
                         color: Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                        border: Border.all(
+                          color: Colors.green.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.check_circle_outline,
-                              color: Colors.green, size: 20),
+                          const Icon(
+                            Icons.check_circle_outline,
+                            color: Colors.green,
+                            size: 20,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Tracking from:',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                        color: Colors.green)),
+                                Text(
+                                  'Tracking from:',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: Colors.green,
+                                  ),
+                                ),
                                 if (_anchorTransaction != null)
                                   Text(
                                     '${_anchorTransaction!.displayName} — '
                                     '${DateFormat('dd MMM yyyy').format(_anchorTransaction!.date)}',
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w600),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   )
                                 else if (_trackFromDate != null)
                                   Text(
-                                    DateFormat('dd MMM yyyy')
-                                        .format(_trackFromDate!),
+                                    DateFormat(
+                                      'dd MMM yyyy',
+                                    ).format(_trackFromDate!),
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w600),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                               ],
                             ),
@@ -223,14 +240,18 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
                     const SizedBox(height: 20),
                   ],
 
-                  Text('Option 1: Pick a date',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(
+                    'Option 1: Pick a date',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     'Only transactions on or after this date will be considered.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
@@ -253,14 +274,18 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
 
                   const SizedBox(height: 28),
 
-                  Text('Option 2: Start from a transaction',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(
+                    'Option 2: Start from a transaction',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     'Select a specific transaction that marks your financial start point.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
@@ -286,9 +311,12 @@ class _TrackingSettingsScreenState extends State<TrackingSettingsScreen> {
                   FilledButton(
                     onPressed: _save,
                     style: FilledButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 52)),
-                    child: const Text('Save Settings',
-                        style: TextStyle(fontSize: 16)),
+                      minimumSize: const Size(double.infinity, 52),
+                    ),
+                    child: const Text(
+                      'Save Settings',
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ),
                 ],
               ),
@@ -315,12 +343,14 @@ class _TransactionPickerSheetState extends State<_TransactionPickerSheet> {
     final filtered = _query.isEmpty
         ? widget.transactions
         : widget.transactions
-            .where((t) =>
-                t.displayName.toLowerCase().contains(_query.toLowerCase()) ||
-                DateFormat('dd MMM yyyy')
-                    .format(t.date)
-                    .contains(_query))
-            .toList();
+              .where(
+                (t) =>
+                    t.displayName.toLowerCase().contains(
+                      _query.toLowerCase(),
+                    ) ||
+                    DateFormat('dd MMM yyyy').format(t.date).contains(_query),
+              )
+              .toList();
 
     return Column(
       children: [
@@ -340,9 +370,12 @@ class _TransactionPickerSheetState extends State<_TransactionPickerSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              Text('Select Start Transaction',
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Select Start Transaction',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(
                 onChanged: (v) => setState(() => _query = v),
@@ -367,22 +400,28 @@ class _TransactionPickerSheetState extends State<_TransactionPickerSheet> {
                 dense: true,
                 leading: CircleAvatar(
                   radius: 18,
-                  backgroundColor:
-                      tx.isCredit ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.15),
+                  backgroundColor: tx.isCredit
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.red.withValues(alpha: 0.15),
                   child: Icon(
                     tx.isCredit ? Icons.arrow_downward : Icons.arrow_upward,
                     size: 14,
                     color: tx.isCredit ? Colors.green : Colors.red,
                   ),
                 ),
-                title: Text(tx.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
+                title: Text(
+                  tx.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 subtitle: Text(
-                    DateFormat('dd MMM yyyy, hh:mm a').format(tx.date),
-                    style: const TextStyle(fontSize: 11)),
+                  DateFormat('dd MMM yyyy, hh:mm a').format(tx.date),
+                  style: const TextStyle(fontSize: 11),
+                ),
                 trailing: Text(
                   '₹${NumberFormat('#,##,###').format(tx.amount)}',
                   style: TextStyle(

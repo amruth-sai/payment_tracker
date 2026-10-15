@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../models/custom_category.dart';
+import '../models/app_category.dart';
 import '../models/transaction.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 import '../services/transaction_window_service.dart';
-import 'custom_categories_screen.dart';
+import 'categories_screen.dart';
 
 enum _WindowMode { dates, transactions }
 
@@ -23,12 +23,12 @@ class _TransactionWindowCategoryScreenState
     extends State<TransactionWindowCategoryScreen> {
   late final List<Transaction> _transactions;
   final _tagController = TextEditingController();
-  List<CustomCategory> _categories = const [];
+  List<AppCategory> _categories = const [];
   _WindowMode _mode = _WindowMode.dates;
   DateTimeRange? _dateRange;
   Transaction? _firstTransaction;
   Transaction? _lastTransaction;
-  String? _customCategoryId;
+  String? _categoryId;
   bool _loading = true;
   bool _saving = false;
 
@@ -47,12 +47,12 @@ class _TransactionWindowCategoryScreenState
 
   Future<void> _loadCategories() async {
     try {
-      final categories = await LocalStorageService.getAllCustomCategories();
+      final categories = await LocalStorageService.getAllCategories();
       if (!mounted) return;
       setState(() {
         _categories = categories;
-        if (!categories.any((cat) => cat.id == _customCategoryId)) {
-          _customCategoryId = null;
+        if (!categories.any((cat) => cat.id == _categoryId)) {
+          _categoryId = null;
         }
         _loading = false;
       });
@@ -60,7 +60,7 @@ class _TransactionWindowCategoryScreenState
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not load My Categories.')),
+        const SnackBar(content: Text('Could not load Categories.')),
       );
     }
   }
@@ -71,7 +71,10 @@ class _TransactionWindowCategoryScreenState
       return range == null
           ? const []
           : TransactionWindowService.byDateRange(
-              _transactions, range.start, range.end);
+              _transactions,
+              range.start,
+              range.end,
+            );
     }
     if (_firstTransaction == null || _lastTransaction == null) return const [];
     return TransactionWindowService.betweenTransactions(
@@ -110,22 +113,19 @@ class _TransactionWindowCategoryScreenState
   Future<void> _manageCategories() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CustomCategoriesScreen()),
+      MaterialPageRoute(builder: (_) => const CategoriesScreen()),
     );
     if (mounted) await _loadCategories();
   }
 
   Future<void> _apply() async {
-    if (_saving || _customCategoryId == null) return;
+    if (_saving || _categoryId == null) return;
     final selected = _selectedTransactions();
     final tag = _tagController.text.trim();
     if (selected.isEmpty || tag.isEmpty) return;
-    final category = _categories.firstWhere(
-      (cat) => cat.id == _customCategoryId,
-    );
+    final category = _categories.firstWhere((cat) => cat.id == _categoryId);
     final existingCategories = selected
-        .where((tx) =>
-            tx.customCategoryId != null && tx.customCategoryId != category.id)
+        .where((tx) => tx.categoryId != null && tx.categoryId != category.id)
         .length;
     final existingTags = selected
         .where((tx) => tx.tag != null && tx.tag!.trim() != tag)
@@ -137,10 +137,10 @@ class _TransactionWindowCategoryScreenState
         title: const Text('Apply to This Window?'),
         content: Text(
           '${selected.length} active transactions will receive '
-          'My Category “${category.name}” and tag “$tag”.\n\n'
-          '$existingCategories already have a My Category; '
+          'Category “${category.name}” and tag “$tag”.\n\n'
+          '$existingCategories already have a Category; '
           '$existingTags already have a tag. Those labels will be replaced. '
-          'Standard categories, amounts, and debit/credit remain as they are.',
+          'Amounts and debit/credit remain as they are.',
         ),
         actions: [
           TextButton(
@@ -158,10 +158,9 @@ class _TransactionWindowCategoryScreenState
 
     setState(() => _saving = true);
     try {
-      final updated =
-          await LocalStorageService.applyCustomCategoryToTransactions(
+      final updated = await LocalStorageService.applyCategoryToTransactions(
         transactionIds: selected.map((tx) => tx.id),
-        customCategoryId: category.id,
+        categoryId: category.id,
         tag: tag,
       );
       if (!mounted) return;
@@ -220,10 +219,12 @@ class _TransactionWindowCategoryScreenState
                     child: ListTile(
                       leading: const Icon(Icons.calendar_month_outlined),
                       title: const Text('Trip date range'),
-                      subtitle: Text(_dateRange == null
-                          ? 'Choose first and last day'
-                          : '${DateFormat.yMMMd().format(_dateRange!.start)} – '
-                              '${DateFormat.yMMMd().format(_dateRange!.end)}'),
+                      subtitle: Text(
+                        _dateRange == null
+                            ? 'Choose first and last day'
+                            : '${DateFormat.yMMMd().format(_dateRange!.start)} – '
+                                  '${DateFormat.yMMMd().format(_dateRange!.end)}',
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _chooseDates,
                     ),
@@ -233,10 +234,12 @@ class _TransactionWindowCategoryScreenState
                     child: ListTile(
                       leading: const Icon(Icons.first_page),
                       title: const Text('First boundary transaction'),
-                      subtitle: Text(_firstTransaction == null
-                          ? 'Search and select a transaction'
-                          : '${_firstTransaction!.displayName} · '
-                              '${format.format(_firstTransaction!.date)}'),
+                      subtitle: Text(
+                        _firstTransaction == null
+                            ? 'Search and select a transaction'
+                            : '${_firstTransaction!.displayName} · '
+                                  '${format.format(_firstTransaction!.date)}',
+                      ),
                       onTap: () => _chooseTransaction(first: true),
                     ),
                   ),
@@ -244,10 +247,12 @@ class _TransactionWindowCategoryScreenState
                     child: ListTile(
                       leading: const Icon(Icons.last_page),
                       title: const Text('Last boundary transaction'),
-                      subtitle: Text(_lastTransaction == null
-                          ? 'Search and select a transaction'
-                          : '${_lastTransaction!.displayName} · '
-                              '${format.format(_lastTransaction!.date)}'),
+                      subtitle: Text(
+                        _lastTransaction == null
+                            ? 'Search and select a transaction'
+                            : '${_lastTransaction!.displayName} · '
+                                  '${format.format(_lastTransaction!.date)}',
+                      ),
                       onTap: () => _chooseTransaction(first: false),
                     ),
                   ),
@@ -264,26 +269,35 @@ class _TransactionWindowCategoryScreenState
                     padding: const EdgeInsets.all(16),
                     child: selected.isEmpty
                         ? const Text(
-                            'Select a window to preview its transactions.')
+                            'Select a window to preview its transactions.',
+                          )
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('${selected.length} transactions · '
-                                  '$outCount out · $inCount in'),
+                              Text(
+                                '${selected.length} transactions · '
+                                '$outCount out · $inCount in',
+                              ),
                               const SizedBox(height: 8),
-                              Text('${format.format(selected.first.date)} – '
-                                  '${format.format(selected.last.date)}'),
+                              Text(
+                                '${format.format(selected.first.date)} – '
+                                '${format.format(selected.last.date)}',
+                              ),
                               const Divider(height: 20),
-                              ...selected.take(5).map((tx) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 4),
-                                    child: Text(
-                                      '${DateFormat.MMMd().format(tx.date)} · '
-                                      '${tx.displayName} · '
-                                      '${tx.typeLabel} ${tx.amount.toStringAsFixed(2)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                              ...selected
+                                  .take(5)
+                                  .map(
+                                    (tx) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Text(
+                                        '${DateFormat.MMMd().format(tx.date)} · '
+                                        '${tx.displayName} · '
+                                        '${tx.typeLabel} ${tx.amount.toStringAsFixed(2)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  )),
+                                  ),
                               if (selected.length > 5)
                                 Text('…and ${selected.length - 5} more'),
                             ],
@@ -292,28 +306,29 @@ class _TransactionWindowCategoryScreenState
                 ),
                 const SizedBox(height: 20),
                 DropdownButtonFormField<String>(
-                  key: ValueKey(_customCategoryId),
-                  initialValue: _customCategoryId,
+                  key: ValueKey(_categoryId),
+                  initialValue: _categoryId,
                   isExpanded: true,
                   decoration: const InputDecoration(
-                    labelText: 'My Category',
+                    labelText: 'Category',
                     border: OutlineInputBorder(),
                   ),
                   items: _categories
-                      .map((category) => DropdownMenuItem(
-                            value: category.id,
-                            child: Text('${category.emoji} ${category.name}'),
-                          ))
+                      .map(
+                        (category) => DropdownMenuItem(
+                          value: category.id,
+                          child: Text('${category.emoji} ${category.name}'),
+                        ),
+                      )
                       .toList(),
-                  onChanged: (value) =>
-                      setState(() => _customCategoryId = value),
+                  onChanged: (value) => setState(() => _categoryId = value),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
                     onPressed: _manageCategories,
                     icon: const Icon(Icons.add),
-                    label: const Text('Create or manage My Categories'),
+                    label: const Text('Create or manage Categories'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -331,9 +346,10 @@ class _TransactionWindowCategoryScreenState
                 ),
                 const SizedBox(height: 18),
                 FilledButton.icon(
-                  onPressed: _saving ||
+                  onPressed:
+                      _saving ||
                           selected.isEmpty ||
-                          _customCategoryId == null ||
+                          _categoryId == null ||
                           _tagController.text.trim().isEmpty
                       ? null
                       : _apply,
@@ -344,7 +360,7 @@ class _TransactionWindowCategoryScreenState
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.done_all),
-                  label: const Text('Apply My Category and tag'),
+                  label: const Text('Apply Category and tag'),
                 ),
                 const SizedBox(height: 24),
               ],
@@ -355,24 +371,21 @@ class _TransactionWindowCategoryScreenState
 
 class _TransactionBoundarySearch extends SearchDelegate<Transaction?> {
   _TransactionBoundarySearch(this.transactions)
-      : super(searchFieldLabel: 'Search merchant, amount, or date');
+    : super(searchFieldLabel: 'Search merchant, amount, or date');
 
   final List<Transaction> transactions;
 
   @override
   List<Widget> buildActions(BuildContext context) => [
-        if (query.isNotEmpty)
-          IconButton(
-            onPressed: () => query = '',
-            icon: const Icon(Icons.clear),
-          ),
-      ];
+    if (query.isNotEmpty)
+      IconButton(onPressed: () => query = '', icon: const Icon(Icons.clear)),
+  ];
 
   @override
   Widget buildLeading(BuildContext context) => IconButton(
-        onPressed: () => close(context, null),
-        icon: const Icon(Icons.arrow_back),
-      );
+    onPressed: () => close(context, null),
+    icon: const Icon(Icons.arrow_back),
+  );
 
   @override
   Widget buildResults(BuildContext context) => _matches(context);
@@ -401,10 +414,15 @@ class _TransactionBoundarySearch extends SearchDelegate<Transaction?> {
       itemBuilder: (context, index) {
         final tx = matches[index];
         return ListTile(
-          title: Text(tx.displayName,
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${DateFormat('d MMM y, h:mm a').format(tx.date)} · '
-              '${tx.typeLabel} ${tx.amount.toStringAsFixed(2)}'),
+          title: Text(
+            tx.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            '${DateFormat('d MMM y, h:mm a').format(tx.date)} · '
+            '${tx.typeLabel} ${tx.amount.toStringAsFixed(2)}',
+          ),
           onTap: () => close(context, tx),
         );
       },

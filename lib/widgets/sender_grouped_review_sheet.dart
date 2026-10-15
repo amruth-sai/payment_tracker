@@ -31,10 +31,8 @@ class SenderGroupedReviewSheet extends StatefulWidget {
       useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
-      builder: (_) => SenderGroupedReviewSheet(
-        transactions: transactions,
-        onDone: onDone,
-      ),
+      builder: (_) =>
+          SenderGroupedReviewSheet(transactions: transactions, onDone: onDone),
     );
   }
 
@@ -52,7 +50,9 @@ class _SenderGroupedReviewSheetState extends State<SenderGroupedReviewSheet> {
   @override
   void initState() {
     super.initState();
-    _groupedTransactions = SmsParser.groupTransactionsBySender(widget.transactions);
+    _groupedTransactions = SmsParser.groupTransactionsBySender(
+      widget.transactions,
+    );
   }
 
   Future<void> _confirmAll() async {
@@ -121,8 +121,11 @@ class _SenderGroupedReviewSheetState extends State<SenderGroupedReviewSheet> {
                     color: theme.colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.account_balance_rounded,
-                      size: 22, color: theme.colorScheme.onPrimaryContainer),
+                  child: Icon(
+                    Icons.account_balance_rounded,
+                    size: 22,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -131,8 +134,9 @@ class _SenderGroupedReviewSheetState extends State<SenderGroupedReviewSheet> {
                     children: [
                       Text(
                         '$totalTransactions Transactions from $senderCount Bank${senderCount > 1 ? 's' : ''}',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       Text(
                         'Review and confirm transaction types for each bank',
@@ -201,7 +205,9 @@ class _SenderGroupedReviewSheetState extends State<SenderGroupedReviewSheet> {
                           : () {
                               // Ignore ALL
                               setState(() {
-                                _toIgnore.addAll(widget.transactions.map((t) => t.id));
+                                _toIgnore.addAll(
+                                  widget.transactions.map((t) => t.id),
+                                );
                               });
                               _confirmAll();
                             },
@@ -218,7 +224,10 @@ class _SenderGroupedReviewSheetState extends State<SenderGroupedReviewSheet> {
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Text('Confirm All'),
                     ),
                   ),
@@ -264,7 +273,10 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
 
     final totalAmount = widget.transactions
         .where((tx) => !widget.ignoredTransactionIds.contains(tx.id))
-        .fold<double>(0, (sum, tx) => sum + (tx.isCredit ? tx.amount : -tx.amount));
+        .fold<double>(
+          0,
+          (sum, tx) => sum + (tx.isCredit ? tx.amount : -tx.amount),
+        );
 
     final activeTransactions = widget.transactions
         .where((tx) => !widget.ignoredTransactionIds.contains(tx.id))
@@ -286,7 +298,10 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
         children: [
           // Header
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -320,7 +335,10 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
                 ),
                 if (isUserBank)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary,
                       borderRadius: BorderRadius.circular(8),
@@ -346,10 +364,7 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Text(
-                      'Total: ',
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    Text('Total: ', style: theme.textTheme.bodySmall),
                     Text(
                       '${totalAmount >= 0 ? '+' : ''}₹${NumberFormat('#,##,###').format(totalAmount.abs())}',
                       style: TextStyle(
@@ -394,11 +409,14 @@ class _SenderGroupTileState extends State<_SenderGroupTile> {
             secondChild: Column(
               children: [
                 const Divider(height: 1),
-                ...widget.transactions.map((tx) => _TransactionTile(
-                  transaction: tx,
-                  isIgnored: widget.ignoredTransactionIds.contains(tx.id),
-                  onToggleIgnore: () => widget.onToggleIgnoreTransaction(tx.id),
-                )),
+                ...widget.transactions.map(
+                  (tx) => _TransactionTile(
+                    transaction: tx,
+                    isIgnored: widget.ignoredTransactionIds.contains(tx.id),
+                    onToggleIgnore: () =>
+                        widget.onToggleIgnoreTransaction(tx.id),
+                  ),
+                ),
                 const SizedBox(height: 8),
               ],
             ),
@@ -413,10 +431,7 @@ class _TypeSelector extends StatelessWidget {
   final TransactionType? currentType;
   final Function(TransactionType?) onChanged;
 
-  const _TypeSelector({
-    required this.currentType,
-    required this.onChanged,
-  });
+  const _TypeSelector({required this.currentType, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -429,8 +444,11 @@ class _TypeSelector extends StatelessWidget {
           value: null,
           child: Row(
             children: [
-              Icon(Icons.auto_fix_high, size: 16,
-                   color: theme.colorScheme.onSurfaceVariant),
+              Icon(
+                Icons.auto_fix_high,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 8),
               const Text('Auto-detect'),
             ],
@@ -463,8 +481,8 @@ class _TypeSelector extends StatelessWidget {
           color: currentType == null
               ? theme.colorScheme.surfaceContainerHighest
               : (currentType == TransactionType.credit
-                  ? Colors.green.withValues(alpha: 0.15)
-                  : Colors.red.withValues(alpha: 0.15)),
+                    ? Colors.green.withValues(alpha: 0.15)
+                    : Colors.red.withValues(alpha: 0.15)),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -474,22 +492,30 @@ class _TypeSelector extends StatelessWidget {
               currentType == null
                   ? Icons.auto_fix_high
                   : (currentType == TransactionType.credit
-                      ? Icons.add_circle
-                      : Icons.remove_circle),
+                        ? Icons.add_circle
+                        : Icons.remove_circle),
               size: 14,
               color: currentType == null
                   ? theme.colorScheme.onSurfaceVariant
-                  : (currentType == TransactionType.credit ? Colors.green : Colors.red),
+                  : (currentType == TransactionType.credit
+                        ? Colors.green
+                        : Colors.red),
             ),
             const SizedBox(width: 4),
             Text(
-              currentType == null ? 'Auto' : (currentType == TransactionType.credit ? 'Credit' : 'Debit'),
+              currentType == null
+                  ? 'Auto'
+                  : (currentType == TransactionType.credit
+                        ? 'Credit'
+                        : 'Debit'),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: currentType == null
                     ? theme.colorScheme.onSurfaceVariant
-                    : (currentType == TransactionType.credit ? Colors.green : Colors.red),
+                    : (currentType == TransactionType.credit
+                          ? Colors.green
+                          : Colors.red),
               ),
             ),
           ],
@@ -529,7 +555,10 @@ class _TransactionTile extends StatelessWidget {
         ),
         child: ListTile(
           dense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 2,
+          ),
           leading: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(

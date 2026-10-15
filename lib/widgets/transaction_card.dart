@@ -1,16 +1,16 @@
 // lib/widgets/transaction_card.dart
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/sms_service.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 
 class TransactionCard extends StatelessWidget {
   final Transaction tx;
   final String? accountDisplayName;
-  final String? standardCategoryLabel;
-  final Color? standardCategoryColor;
-  final String? customCategoryLabel;
-  final Color? customCategoryColor;
+  final String? categoryLabel;
+  final Color? categoryColor;
   final VoidCallback? onTap;
   final Function(Transaction)? onSwipeIgnore;
   final Function(Transaction)? onSwipeToggleType;
@@ -19,10 +19,8 @@ class TransactionCard extends StatelessWidget {
     super.key,
     required this.tx,
     this.accountDisplayName,
-    this.standardCategoryLabel,
-    this.standardCategoryColor,
-    this.customCategoryLabel,
-    this.customCategoryColor,
+    this.categoryLabel,
+    this.categoryColor,
     this.onTap,
     this.onSwipeIgnore,
     this.onSwipeToggleType,
@@ -36,7 +34,11 @@ class TransactionCard extends StatelessWidget {
     final bgColor = isCredit
         ? const Color(0xFF1DB954).withValues(alpha: 0.08)
         : const Color(0xFFE53935).withValues(alpha: 0.08);
-    final effectiveStandardCategory = tx.effectiveLegacyCategory;
+    final category = context
+        .watch<SmsService?>()
+        ?.categoriesById[tx.categoryId];
+    final label = categoryLabel ?? category?.name;
+    final labelColor = categoryColor ?? category?.color;
 
     final cardContent = Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
@@ -86,29 +88,18 @@ class TransactionCard extends StatelessWidget {
                       runSpacing: 4,
                       children: [
                         _Chip(
-                            label: tx.sourceLabel,
-                            color: theme.colorScheme.primary),
+                          label: tx.sourceLabel,
+                          color: theme.colorScheme.primary,
+                        ),
                         if (accountDisplayName != null)
                           _Chip(
-                              label: accountDisplayName!,
-                              color: theme.colorScheme.tertiary),
-                        if (standardCategoryLabel != null)
+                            label: accountDisplayName!,
+                            color: theme.colorScheme.tertiary,
+                          ),
+                        if (label != null)
                           _Chip(
-                            label: standardCategoryLabel!,
-                            color: standardCategoryColor ??
-                                theme.colorScheme.secondary,
-                          )
-                        else if (effectiveStandardCategory != null &&
-                            effectiveStandardCategory !=
-                                TransactionCategory.uncategorized)
-                          _Chip(
-                              label: effectiveStandardCategory.displayName,
-                              color: theme.colorScheme.secondary),
-                        if (customCategoryLabel != null)
-                          _Chip(
-                            label: customCategoryLabel!,
-                            color: customCategoryColor ??
-                                theme.colorScheme.primary,
+                            label: label,
+                            color: labelColor ?? theme.colorScheme.primary,
                           ),
                       ],
                     ),
@@ -174,7 +165,7 @@ class TransactionCard extends StatelessWidget {
         return false;
       },
       background: // Swipe right background (Ignore)
-          Container(
+      Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         decoration: BoxDecoration(
           color: Colors.orange,
@@ -199,7 +190,7 @@ class TransactionCard extends StatelessWidget {
         ),
       ),
       secondaryBackground: // Swipe left background (Toggle type)
-          Container(
+      Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         decoration: BoxDecoration(
           color: isCredit ? const Color(0xFFE53935) : const Color(0xFF1DB954),
@@ -233,15 +224,8 @@ class TransactionCard extends StatelessWidget {
     );
   }
 
-  String _formatAmount(double amount) {
-    if (amount >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount >= 1000) {
-      final formatter = NumberFormat('#,##,###');
-      return formatter.format(amount.toInt());
-    }
-    return amount.toStringAsFixed(amount.truncateToDouble() == amount ? 0 : 2);
-  }
+  String _formatAmount(double amount) =>
+      NumberFormat('#,##,##0.##', 'en_IN').format(amount);
 }
 
 class _Chip extends StatelessWidget {

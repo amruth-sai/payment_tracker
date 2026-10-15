@@ -1,20 +1,27 @@
+import '../utils/money.dart';
 // lib/services/sms_service.dart
 
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/transaction.dart';
+import '../models/app_category.dart';
 import '../models/transaction_review.dart';
 import '../models/sms_processing_record.dart';
 import '../models/account.dart';
 import '../models/salary_cycle.dart';
 import 'local_storage_service.dart';
 import 'sms_reader.dart';
+import 'sms_fingerprint.dart';
+import '../utils/date_utils.dart';
 import 'sms_processing_service.dart';
 
 class SmsService extends ChangeNotifier {
   final SmsReader _reader = SmsReader();
 
   List<Transaction> _transactions = [];
+  Map<String, AppCategory> _categoriesById = {};
+  Map<String, AppCategory> get categoriesById =>
+      Map.unmodifiable(_categoriesById);
   List<Account> _accounts = [];
   Map<String, Account> _accountsMap = {};
   SalaryCycle? _currentCycle;
@@ -28,7 +35,7 @@ class SmsService extends ChangeNotifier {
   int _newlyParsedCount = 0;
   String _loadingStatus = '';
 
-  List<Transaction> get transactions => _transactions;
+  List<Transaction> get transactions => List.unmodifiable(_transactions);
   List<Account> get accounts => _accounts;
   List<Transaction> get newlyFoundTransactions => _newlyFoundTransactions;
   bool get isLoading => _isLoading;
@@ -40,14 +47,14 @@ class SmsService extends ChangeNotifier {
   String get loadingStatus => _loadingStatus;
 
   List<Transaction> get credits =>
-      _transactions.where((t) => t.isCredit).toList();
+      _transactions.where((t) => t.isIncome).toList();
 
   List<Transaction> get debits =>
-      _transactions.where((t) => t.isDebit).toList();
+      _transactions.where((t) => t.isExpense).toList();
 
-  double get totalCredits => credits.fold(0, (sum, t) => sum + t.amount);
+  double get totalCredits => credits.totalAmount;
 
-  double get totalDebits => debits.fold(0, (sum, t) => sum + t.amount);
+  double get totalDebits => debits.totalAmount;
 
   // Current cycle (salary-based) or fallback to calendar month
   SalaryCycle? get currentCycle => _currentCycle;
@@ -55,10 +62,8 @@ class SmsService extends ChangeNotifier {
   /// Transactions in the current cycle period, or current calendar month if no cycle
   List<Transaction> get currentCycleTransactions {
     if (_currentCycle != null) {
-      final start = _currentCycle!.startDate;
-      final end = _currentCycle!.endDate ?? DateTime.now();
       return _transactions
-          .where((t) => !t.date.isBefore(start) && !t.date.isAfter(end))
+          .where((t) => _currentCycle!.contains(t.date))
           .toList();
     }
     // Use salary cycle day if set, otherwise fall back to calendar month
@@ -71,13 +76,11 @@ class SmsService extends ChangeNotifier {
     return currentMonthTransactions;
   }
 
-  double get currentCycleCredits => currentCycleTransactions
-      .where((t) => t.isCredit)
-      .fold(0.0, (sum, t) => sum + t.amount);
+  double get currentCycleCredits =>
+      currentCycleTransactions.where((t) => t.isIncome).totalAmount;
 
-  double get currentCycleDebits => currentCycleTransactions
-      .where((t) => t.isDebit)
-      .fold(0.0, (sum, t) => sum + t.amount);
+  double get currentCycleDebits =>
+      currentCycleTransactions.where((t) => t.isExpense).totalAmount;
 
   String get currentCycleLabel {
     if (_currentCycle != null) {
@@ -105,7 +108,7 @@ class SmsService extends ChangeNotifier {
         'Sep',
         'Oct',
         'Nov',
-        'Dec'
+        'Dec',
       ];
       return '${start.day} ${months[start.month - 1]} – ${end.day} ${months[end.month - 1]} ${end.year}';
     }
@@ -123,7 +126,7 @@ class SmsService extends ChangeNotifier {
         'Sep',
         'Oct',
         'Nov',
-        'Dec'
+        'Dec',
       ];
       return '${range.$1.day} ${months[range.$1.month - 1]} – ${range.$2.day} ${months[range.$2.month - 1]} ${range.$2.year}';
     }
@@ -144,7 +147,7 @@ class SmsService extends ChangeNotifier {
       'September',
       'October',
       'November',
-      'December'
+      'December',
     ];
     return '${months[now.month - 1]} ${now.year}';
   }
@@ -157,13 +160,11 @@ class SmsService extends ChangeNotifier {
         .toList();
   }
 
-  double get currentMonthCredits => currentMonthTransactions
-      .where((t) => t.isCredit)
-      .fold(0.0, (sum, t) => sum + t.amount);
+  double get currentMonthCredits =>
+      currentMonthTransactions.where((t) => t.isIncome).totalAmount;
 
-  double get currentMonthDebits => currentMonthTransactions
-      .where((t) => t.isDebit)
-      .fold(0.0, (sum, t) => sum + t.amount);
+  double get currentMonthDebits =>
+      currentMonthTransactions.where((t) => t.isExpense).totalAmount;
 
   /// Feature 6: Call this after the review popup has been handled
   void clearNewlyFoundTransactions() {
@@ -196,12 +197,17 @@ class SmsService extends ChangeNotifier {
     try {
       // Step 1: Load cached transactions first (instant display!)
       final cached = await _getFilteredTransactions();
+      _transactions = cached;
+      _newlyFoundTransactions = [];
       if (cached.isNotEmpty) {
         _transactions = cached;
         _cachedCount = cached.length;
         _loadingStatus = 'Found $_cachedCount cached transactions';
         notifyListeners();
       }
+
+      await _loadAccounts();
+      await _loadCurrentCycle();
 
       // Step 2: Request SMS permission
       _loadingStatus = 'Checking permissions...';
@@ -226,14 +232,23 @@ class SmsService extends ChangeNotifier {
       final cutoff = daysBack != null
           ? scanStartedAt.subtract(Duration(days: daysBack))
           : scanFromBeginning || lastScanAt == null
-              ? null
-              : lastScanAt.subtract(const Duration(days: 2));
+          ? null
+          : lastScanAt.subtract(const Duration(days: 2));
       final allSms = await _reader.read(after: cutoff);
 
       // Step 5: Filter out already processed SMS
       final newSms = allSms.where((item) {
-        final id = item.message.id?.toString() ?? '';
-        return id.isNotEmpty && !processedIds.contains(id);
+        final sms = item.message;
+        if (sms.date == null || sms.body == null || sms.address == null) {
+          return false;
+        }
+        final id = SmsFingerprint.of(
+          sender: sms.address!,
+          body: sms.body!,
+          date: DateTime.fromMillisecondsSinceEpoch(sms.date!),
+          isSent: item.isSent,
+        );
+        return !processedIds.contains(id);
       }).toList();
 
       if (newSms.isEmpty) {
@@ -285,10 +300,12 @@ class SmsService extends ChangeNotifier {
         final body = sms.body ?? '';
         final dateMs = int.tryParse(sms.date?.toString() ?? '0') ?? 0;
         final date = DateTime.fromMillisecondsSinceEpoch(dateMs);
-        final id = sms.id?.toString();
-        if (id == null || id.isEmpty) {
-          continue;
-        }
+        final id = SmsFingerprint.of(
+          sender: sender,
+          body: body,
+          date: date,
+          isSent: item.isSent,
+        );
         if (!seenSmsIds.add(id)) continue;
 
         final result = await processor.process(
@@ -325,10 +342,15 @@ class SmsService extends ChangeNotifier {
       _error = 'Unable to read messages right now. Please try again.';
     }
 
-    await _loadAccounts();
-    await _loadCurrentCycle();
-    _isLoading = false;
-    notifyListeners();
+    try {
+      await _loadAccounts();
+      await _loadCurrentCycle();
+    } catch (_) {
+      _error = 'Unable to refresh saved data. Please try again.';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   /// Recheck SMS without deleting user edits or ignored decisions. Previously
@@ -356,9 +378,11 @@ class SmsService extends ChangeNotifier {
   /// Group transactions by month for chart
   Map<String, double> getMonthlySummary(TransactionType type) {
     final map = <String, double>{};
-    for (final tx in _transactions.where((t) => t.type == type)) {
+    for (final tx in _transactions.where(
+      (t) => type == TransactionType.debit ? t.isExpense : t.isIncome,
+    )) {
       final key = '${tx.date.year}-${tx.date.month.toString().padLeft(2, '0')}';
-      map[key] = (map[key] ?? 0) + tx.amount;
+      map[key] = Money.sum([map[key] ?? 0, tx.amount]);
     }
     return map;
   }
@@ -369,18 +393,19 @@ class SmsService extends ChangeNotifier {
   }
 
   Future<void> _loadAccounts() async {
+    _categoriesById = {
+      for (final category in await LocalStorageService.getAllCategories())
+        category.id: category,
+    };
     _accounts = await LocalStorageService.getAllAccounts();
     _accountsMap = {for (final a in _accounts) a.id: a};
   }
 
   Future<void> _loadCurrentCycle() async {
-    final cycles = await LocalStorageService.getAllSalaryCycles();
+    final cycles = await LocalStorageService.generateSalaryCycles();
     _currentCycle = cycles.isEmpty
         ? null
-        : cycles.firstWhere(
-            (c) => c.isCurrent,
-            orElse: () => cycles.first,
-          );
+        : cycles.firstWhere((c) => c.isCurrent, orElse: () => cycles.first);
     _salaryCycleDay = await LocalStorageService.getSalaryCycleDay();
   }
 
@@ -389,30 +414,9 @@ class SmsService extends ChangeNotifier {
   /// If today is Mar 28, the cycle is Mar 25 – Apr 24.
   static (DateTime, DateTime) _getCycleDateRange(int salaryDay) {
     final now = DateTime.now();
-    DateTime cycleStart;
-    if (now.day >= salaryDay) {
-      // Cycle started this month
-      cycleStart = DateTime(now.year, now.month, salaryDay);
-    } else {
-      // Cycle started last month
-      final prevMonth = DateTime(now.year, now.month - 1, 1);
-      final daysInPrevMonth =
-          DateTime(prevMonth.year, prevMonth.month + 1, 0).day;
-      final clampedDay =
-          salaryDay > daysInPrevMonth ? daysInPrevMonth : salaryDay;
-      cycleStart = DateTime(prevMonth.year, prevMonth.month, clampedDay);
-    }
-    // Cycle ends the day before the next salary day
-    final nextMonth = DateTime(cycleStart.year, cycleStart.month + 1, 1);
-    final daysInNextMonth =
-        DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
-    final clampedNextDay =
-        salaryDay > daysInNextMonth ? daysInNextMonth : salaryDay;
-    final cycleEnd = DateTime(nextMonth.year, nextMonth.month, clampedNextDay)
-        .subtract(const Duration(days: 1));
-    // Return start to min(cycleEnd, now) — don't go into the future
-    final effectiveEnd = cycleEnd.isAfter(now) ? now : cycleEnd;
-    return (cycleStart, effectiveEnd);
+    final range = AppDateUtils.salaryPeriod(now, salaryDay);
+    final inclusiveEnd = range.$2.subtract(const Duration(milliseconds: 1));
+    return (range.$1, inclusiveEnd.isAfter(now) ? now : inclusiveEnd);
   }
 
   String? getAccountDisplayName(String? accountId, String? accountLast4) {
@@ -420,15 +424,7 @@ class SmsService extends ChangeNotifier {
       final account = _accountsMap[accountId];
       if (account != null) return account.displayName;
     }
-    // Fallback: match account by last 4 digits
-    if (accountLast4 != null) {
-      final match = _accounts.cast<Account?>().firstWhere(
-            (a) => a!.last4Digits == accountLast4,
-            orElse: () => null,
-          );
-      if (match != null) return match.displayName;
-      return '••$accountLast4';
-    }
+    if (accountLast4 != null) return 'Account ending $accountLast4';
     return null;
   }
 

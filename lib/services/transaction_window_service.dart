@@ -19,8 +19,9 @@ class TransactionWindowService {
       throw ArgumentError('The end date must be on or after the start date.');
     }
     return transactions
-        .where((tx) =>
-            !tx.date.isBefore(firstDay) && tx.date.isBefore(afterLastDay))
+        .where(
+          (tx) => !tx.date.isBefore(firstDay) && tx.date.isBefore(afterLastDay),
+        )
         .toList()
       ..sort(compareByDateAndId);
   }

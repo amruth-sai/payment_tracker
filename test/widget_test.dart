@@ -16,9 +16,11 @@ void main() {
       rawMessage: 'Rs.1250 debited for UPI payment.',
     );
 
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: TransactionCard(tx: transaction)),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: TransactionCard(tx: transaction)),
+      ),
+    );
 
     expect(find.text('Coffee Shop'), findsOneWidget);
     expect(find.textContaining('1,250'), findsWidgets);

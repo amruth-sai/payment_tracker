@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/app_category.dart';
 import 'package:intl/intl.dart';
 
 import '../models/salary_cycle.dart';
@@ -19,6 +20,7 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
   List<Transaction> _allTransactions = const [];
   SalaryCycle? _selectedCycle;
   bool _isLoading = true;
+  Map<String, AppCategory> _categories = {};
   String? _error;
 
   @override
@@ -29,6 +31,9 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
 
   Future<void> _load() async {
     try {
+      final categories = await LocalStorageService.getAllCategories();
+      if (!mounted) return;
+      _categories = {for (final category in categories) category.id: category};
       final results = await Future.wait([
         LocalStorageService.getAllSalaryCycles(),
         LocalStorageService.getTrackedTransactions(),
@@ -106,12 +111,12 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _CloseoutMessage(message: _error!, onRetry: _load)
-              : _selectedCycle == null
-                  ? const _CloseoutMessage(
-                      message: 'Create a salary cycle before viewing a closeout.',
-                    )
-                  : _buildCloseout(_selectedCycle!),
+          ? _CloseoutMessage(message: _error!, onRetry: _load)
+          : _selectedCycle == null
+          ? const _CloseoutMessage(
+              message: 'Create a salary cycle before viewing a closeout.',
+            )
+          : _buildCloseout(_selectedCycle!),
     );
   }
 
@@ -135,7 +140,8 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
         if (!closeout.isComplete)
           const _CloseoutNotice(
             icon: Icons.timelapse_outlined,
-            text: 'This cycle is still active. Values update as new transactions arrive.',
+            text:
+                'This cycle is still active. Values update as new transactions arrive.',
           ),
         if (!closeout.isComplete) const SizedBox(height: 12),
         Card(
@@ -144,14 +150,17 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                Text('Cycle Savings', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  'Cycle Savings',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   _currency(closeout.savings),
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: savingsColor,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: savingsColor,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -286,7 +295,8 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
         const _SectionTitle(
           icon: Icons.receipt_long_outlined,
           title: 'Outstanding Reimbursable',
-          subtitle: 'Expenses tagged reimbursable remain here until you retag them',
+          subtitle:
+              'Expenses tagged reimbursable remain here until you retag them',
         ),
         const SizedBox(height: 8),
         if (closeout.reimbursableTransactions.isEmpty)
@@ -314,7 +324,9 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
                   (transaction) => ListTile(
                     dense: true,
                     title: Text(transaction.displayName),
-                    subtitle: Text(DateFormat('d MMM').format(transaction.date)),
+                    subtitle: Text(
+                      DateFormat('d MMM').format(transaction.date),
+                    ),
                     trailing: Text(_currency(transaction.amount)),
                   ),
                 ),
@@ -331,15 +343,8 @@ class _SalaryMonthCloseoutScreenState extends State<SalaryMonthCloseoutScreen> {
     return '${formatter.format(cycle.startDate)} to ${formatter.format(end)}';
   }
 
-  String _categoryLabel(String categoryId) {
-    final category = TransactionCategory.fromStandardCategoryId(categoryId);
-    if (category != null) return category.displayName;
-    if (categoryId == 'uncategorized') return 'Uncategorized';
-    return categoryId
-        .split('_')
-        .map((word) => word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}')
-        .join(' ');
-  }
+  String _categoryLabel(String categoryId) =>
+      _categories[categoryId]?.name ?? 'Uncategorized';
 
   String _currency(double amount) {
     return NumberFormat.currency(

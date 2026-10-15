@@ -1,26 +1,58 @@
-// lib/screens/custom_categories_screen.dart
-// Feature 3: Manage user-created custom categories
+// lib/screens/categories_screen.dart
+// Feature 3: Manage user-created categories
 
 import 'package:flutter/material.dart';
-import '../models/custom_category.dart';
+import 'package:uuid/uuid.dart';
+import 'package:provider/provider.dart';
+import '../services/sms_service.dart';
+import '../models/app_category.dart';
 import '../services/local_storage_service.dart';
 
-class CustomCategoriesScreen extends StatefulWidget {
-  const CustomCategoriesScreen({super.key});
+class CategoriesScreen extends StatefulWidget {
+  const CategoriesScreen({super.key});
 
   @override
-  State<CustomCategoriesScreen> createState() => _CustomCategoriesScreenState();
+  State<CategoriesScreen> createState() => _CategoriesScreenState();
 }
 
-class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
-  List<CustomCategory> _categories = [];
+class _CategoriesScreenState extends State<CategoriesScreen> {
+  List<AppCategory> _categories = [];
   bool _loading = true;
+  bool _saving = false;
+  String? _error;
 
   // Predefined emoji options for quick pick
   static const _emojiOptions = [
-    '🏷️', '🏋️', '🐾', '🎮', '🎸', '🌿', '🧘', '✈️', '👔', '🔧',
-    '🎨', '📷', '🍺', '☕', '💇', '🛒', '🚴', '🧹', '🧳', '💒',
-    '🐶', '🌮', '🏊', '🎭', '🧩', '💡', '📦', '🛠️', '🎁', '🏡',
+    '🏷️',
+    '🏋️',
+    '🐾',
+    '🎮',
+    '🎸',
+    '🌿',
+    '🧘',
+    '✈️',
+    '👔',
+    '🔧',
+    '🎨',
+    '📷',
+    '🍺',
+    '☕',
+    '💇',
+    '🛒',
+    '🚴',
+    '🧹',
+    '🧳',
+    '💒',
+    '🐶',
+    '🌮',
+    '🏊',
+    '🎭',
+    '🧩',
+    '💡',
+    '📦',
+    '🛠️',
+    '🎁',
+    '🏡',
   ];
 
   static const _colorOptions = [
@@ -43,11 +75,46 @@ class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
   }
 
   Future<void> _load() async {
-    final cats = await LocalStorageService.getAllCustomCategories();
-    setState(() {
-      _categories = cats;
-      _loading = false;
-    });
+    try {
+      final categories = await LocalStorageService.getAllCategories();
+      if (mounted) {
+        setState(() {
+          _categories = categories;
+          _loading = false;
+          _error = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Could not load categories.';
+        });
+      }
+    }
+  }
+
+  Future<void> _write(Future<void> Function() action) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await action();
+      if (!mounted) return;
+      await context.read<SmsService>().reloadFromCache();
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not save categories. Use a unique, nonempty name and try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -55,7 +122,7 @@ class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Custom Categories'),
+        title: const Text('Categories'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -66,44 +133,47 @@ class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: TextButton(onPressed: _load, child: Text(_error!)),
+            )
           : _categories.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('🏷️',
-                          style: theme.textTheme.displayMedium),
-                      const SizedBox(height: 12),
-                      Text('No custom categories yet',
-                          style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Tap + to create one',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: () => _showEditor(context),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Category'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('🏷️', style: theme.textTheme.displayMedium),
+                  const SizedBox(height: 12),
+                  Text('No categories yet', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tap + to create one',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    return _CategoryTile(
-                      category: cat,
-                      onEdit: () => _showEditor(context, existing: cat),
-                      onDelete: () => _delete(cat),
-                    );
-                  },
-                ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: () => _showEditor(context),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Category'),
+                  ),
+                ],
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _categories.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final cat = _categories[index];
+                return _CategoryTile(
+                  category: cat,
+                  onEdit: () => _showEditor(context, existing: cat),
+                  onDelete: () => _delete(cat),
+                );
+              },
+            ),
       floatingActionButton: _categories.isEmpty
           ? null
           : FloatingActionButton(
@@ -113,17 +183,20 @@ class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
     );
   }
 
-  Future<void> _delete(CustomCategory cat) async {
+  Future<void> _delete(AppCategory cat) async {
+    if (_saving) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Category'),
         content: Text(
-            'Delete "${cat.name}"? Any transactions using this category will be unlinked.'),
+          'Delete "${cat.name}"? Transactions and review items will become uncategorized. Its budget will be deleted and merchant rules will stop assigning this category.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -132,15 +205,17 @@ class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await LocalStorageService.deleteCustomCategory(cat.id);
-      await _load();
+    if (mounted && confirmed == true) {
+      await _write(() => LocalStorageService.deleteCategory(cat.id));
     }
   }
 
-  Future<void> _showEditor(BuildContext context,
-      {CustomCategory? existing}) async {
-    final result = await showModalBottomSheet<CustomCategory>(
+  Future<void> _showEditor(
+    BuildContext context, {
+    AppCategory? existing,
+  }) async {
+    if (_saving) return;
+    final result = await showModalBottomSheet<AppCategory>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -150,15 +225,14 @@ class _CustomCategoriesScreenState extends State<CustomCategoriesScreen> {
         colorOptions: _colorOptions,
       ),
     );
-    if (result != null) {
-      await LocalStorageService.saveCustomCategory(result);
-      await _load();
+    if (mounted && result != null) {
+      await _write(() => LocalStorageService.saveCategory(result));
     }
   }
 }
 
 class _CategoryTile extends StatelessWidget {
-  final CustomCategory category;
+  final AppCategory category;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -184,19 +258,27 @@ class _CategoryTile extends StatelessWidget {
           backgroundColor: color.withValues(alpha: 0.25),
           child: Text(category.emoji, style: const TextStyle(fontSize: 20)),
         ),
-        title: Text(category.name,
-            style: theme.textTheme.bodyLarge
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        title: Text(
+          category.name,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                onPressed: onEdit),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              onPressed: onEdit,
+            ),
             IconButton(
-                icon:
-                    const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                onPressed: onDelete),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: Colors.red,
+              ),
+              onPressed: onDelete,
+            ),
           ],
         ),
       ),
@@ -205,7 +287,7 @@ class _CategoryTile extends StatelessWidget {
 }
 
 class _CategoryEditor extends StatefulWidget {
-  final CustomCategory? existing;
+  final AppCategory? existing;
   final List<String> emojiOptions;
   final List<MaterialColor> colorOptions;
 
@@ -227,8 +309,7 @@ class _CategoryEditorState extends State<_CategoryEditor> {
   @override
   void initState() {
     super.initState();
-    _nameController =
-        TextEditingController(text: widget.existing?.name ?? '');
+    _nameController = TextEditingController(text: widget.existing?.name ?? '');
     _selectedEmoji = widget.existing?.emoji ?? widget.emojiOptions.first;
     _selectedColorValue =
         widget.existing?.colorValue ?? widget.colorOptions.first.toARGB32();
@@ -246,7 +327,11 @@ class _CategoryEditorState extends State<_CategoryEditor> {
     final isEdit = widget.existing != null;
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          16, 16, 16, MediaQuery.viewInsetsOf(context).bottom + 24),
+        16,
+        16,
+        16,
+        MediaQuery.viewInsetsOf(context).bottom + 24,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,19 +347,22 @@ class _CategoryEditorState extends State<_CategoryEditor> {
               ),
             ),
           ),
-          Text(isEdit ? 'Edit Category' : 'New Category',
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            isEdit ? 'Edit Category' : 'New Category',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 20),
 
           // Preview
           Center(
             child: CircleAvatar(
               radius: 32,
-              backgroundColor:
-                  Color(_selectedColorValue).withValues(alpha: 0.25),
-              child: Text(_selectedEmoji,
-                  style: const TextStyle(fontSize: 28)),
+              backgroundColor: Color(
+                _selectedColorValue,
+              ).withValues(alpha: 0.25),
+              child: Text(_selectedEmoji, style: const TextStyle(fontSize: 28)),
             ),
           ),
           const SizedBox(height: 20),
@@ -312,7 +400,9 @@ class _CategoryEditorState extends State<_CategoryEditor> {
                     borderRadius: BorderRadius.circular(8),
                     border: selected
                         ? Border.all(
-                            color: Color(_selectedColorValue), width: 2)
+                            color: Color(_selectedColorValue),
+                            width: 2,
+                          )
                         : null,
                   ),
                   child: Text(e, style: const TextStyle(fontSize: 20)),
@@ -340,12 +430,13 @@ class _CategoryEditorState extends State<_CategoryEditor> {
                     shape: BoxShape.circle,
                     border: selected
                         ? Border.all(
-                            color: theme.colorScheme.onSurface, width: 2)
+                            color: theme.colorScheme.onSurface,
+                            width: 2,
+                          )
                         : null,
                   ),
                   child: selected
-                      ? const Icon(Icons.check,
-                          color: Colors.white, size: 18)
+                      ? const Icon(Icons.check, color: Colors.white, size: 18)
                       : null,
                 ),
               );
@@ -368,9 +459,8 @@ class _CategoryEditorState extends State<_CategoryEditor> {
                   onPressed: () {
                     final name = _nameController.text.trim();
                     if (name.isEmpty) return;
-                    final cat = CustomCategory(
-                      id: widget.existing?.id ??
-                          'cat_${DateTime.now().millisecondsSinceEpoch}',
+                    final cat = AppCategory(
+                      id: widget.existing?.id ?? const Uuid().v4(),
                       name: name,
                       emoji: _selectedEmoji,
                       colorValue: _selectedColorValue,

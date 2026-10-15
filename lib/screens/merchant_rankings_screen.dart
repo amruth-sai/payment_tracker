@@ -1,9 +1,9 @@
+import '../utils/money.dart';
 // lib/screens/merchant_rankings_screen.dart
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../services/local_storage_service.dart';
-import '../models/transaction.dart';
 
 class MerchantRankingsScreen extends StatefulWidget {
   const MerchantRankingsScreen({super.key});
@@ -38,29 +38,25 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
 
     final Map<String, _MerchantStat> map = {};
     for (final tx in allTx) {
-      if (tx.type != TransactionType.debit || tx.date.isBefore(cutoff)) continue;
+      if (!tx.isExpense || tx.date.isBefore(cutoff)) continue;
       final merchantName = tx.merchant ?? tx.sender;
       final key = merchantName.toLowerCase().trim();
       if (key.isEmpty || key == 'unknown') continue;
       map.putIfAbsent(
-          key,
-          () => _MerchantStat(
-                name: merchantName,
-                totalAmount: 0,
-                count: 0,
-                category: tx.category,
-              ));
+        key,
+        () => _MerchantStat(name: merchantName, totalAmount: 0, count: 0),
+      );
       map[key] = _MerchantStat(
         name: map[key]!.name,
-        totalAmount: map[key]!.totalAmount + tx.amount,
+        totalAmount: Money.sum([map[key]!.totalAmount, tx.amount]),
         count: map[key]!.count + 1,
-        category: tx.category ?? map[key]!.category,
       );
     }
 
     final sorted = map.values.toList()
       ..sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
 
+    if (!mounted) return;
     setState(() {
       _merchants = sorted;
       _isLoading = false;
@@ -104,7 +100,10 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
 
   Widget _buildBarChart() {
     final topN = _merchants.take(5).toList();
-    final maxVal = topN.fold(0.0, (m, s) => s.totalAmount > m ? s.totalAmount : m);
+    final maxVal = topN.fold(
+      0.0,
+      (m, s) => s.totalAmount > m ? s.totalAmount : m,
+    );
 
     return Container(
       height: 220,
@@ -150,13 +149,19 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
                 showTitles: true,
                 reservedSize: 48,
                 getTitlesWidget: (value, _) {
-                  return Text('₹${_fmtShort(value)}',
-                      style: const TextStyle(fontSize: 10));
+                  return Text(
+                    '₹${_fmtShort(value)}',
+                    style: const TextStyle(fontSize: 10),
+                  );
                 },
               ),
             ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           borderData: FlBorderData(show: false),
           gridData: FlGridData(
@@ -175,7 +180,9 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
                   toY: topN[i].totalAmount,
                   color: _barColors[i % _barColors.length],
                   width: 28,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(6),
+                  ),
                 ),
               ],
             );
@@ -212,15 +219,12 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
             ),
             title: Row(
               children: [
-                if (m.category != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Text(m.category!.emoji),
-                  ),
                 Expanded(
-                  child: Text(m.name,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    m.name,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -238,18 +242,24 @@ class _MerchantRankingsScreenState extends State<MerchantRankingsScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${pct.toStringAsFixed(1)}%',
-                    style: const TextStyle(fontSize: 11)),
+                Text(
+                  '${pct.toStringAsFixed(1)}%',
+                  style: const TextStyle(fontSize: 11),
+                ),
               ],
             ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('₹${_fmt(m.totalAmount)}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text('${m.count} txns',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text(
+                  '₹${_fmt(m.totalAmount)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '${m.count} txns',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
               ],
             ),
           ),
@@ -275,12 +285,10 @@ class _MerchantStat {
   final String name;
   final double totalAmount;
   final int count;
-  final TransactionCategory? category;
 
   const _MerchantStat({
     required this.name,
     required this.totalAmount,
     required this.count,
-    this.category,
   });
 }

@@ -12,7 +12,8 @@ class TransferManagementScreen extends StatefulWidget {
   const TransferManagementScreen({super.key});
 
   @override
-  State<TransferManagementScreen> createState() => _TransferManagementScreenState();
+  State<TransferManagementScreen> createState() =>
+      _TransferManagementScreenState();
 }
 
 class _TransferManagementScreenState extends State<TransferManagementScreen>
@@ -40,7 +41,9 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
 
     try {
       final transactions = context.read<SmsService>().transactions;
-      final potentialPairs = TransferService.detectPotentialTransfers(transactions);
+      final potentialPairs = TransferService.detectPotentialTransfers(
+        transactions,
+      );
 
       if (mounted) {
         setState(() {
@@ -113,10 +116,7 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildSuggestionsTab(),
-          _buildMergedTransfersTab(),
-        ],
+        children: [_buildSuggestionsTab(), _buildMergedTransfersTab()],
       ),
     );
   }
@@ -174,7 +174,9 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
   Widget _buildMergedTransfersTab() {
     return Consumer<SmsService>(
       builder: (context, sms, _) {
-        final mergedTransfers = TransferService.getMergedTransfers(sms.transactions);
+        final mergedTransfers = TransferService.getMergedTransfers(
+          sms.transactions,
+        );
 
         if (mergedTransfers.isEmpty) {
           return const Center(
@@ -296,7 +298,8 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _MergedTransferDetailSheet(mergedTransfer: mergedTransfer),
+      builder: (context) =>
+          _MergedTransferDetailSheet(mergedTransfer: mergedTransfer),
     );
   }
 
@@ -353,7 +356,9 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
                     '🔴 Orphaned Transactions: ${report.orphanedTransactions.length}',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const Text('Transactions with transfer IDs but missing partners'),
+                  const Text(
+                    'Transactions with transfer IDs but missing partners',
+                  ),
                   const SizedBox(height: 8),
                 ],
                 if (report.corruptedGroups.isNotEmpty) ...[
@@ -361,7 +366,9 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
                     '🔴 Corrupted Groups: ${report.corruptedGroups.length}',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const Text('Multiple transactions sharing the same transfer ID'),
+                  const Text(
+                    'Multiple transactions sharing the same transfer ID',
+                  ),
                   const SizedBox(height: 8),
                 ],
                 if (report.invalidTransfers.isNotEmpty) ...[
@@ -380,7 +387,8 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
                   const Text('Minor inconsistencies in transfer metadata'),
                   const SizedBox(height: 8),
                 ],
-                if (report.orphanedTransactions.isNotEmpty || report.corruptedGroups.isNotEmpty) ...[
+                if (report.orphanedTransactions.isNotEmpty ||
+                    report.corruptedGroups.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   const Text(
                     'Would you like to automatically fix the resolvable issues?',
@@ -394,7 +402,8 @@ class _TransferManagementScreenState extends State<TransferManagementScreen>
                 onPressed: () => Navigator.of(context).pop(false),
                 child: const Text('Cancel'),
               ),
-              if (report.orphanedTransactions.isNotEmpty || report.corruptedGroups.isNotEmpty)
+              if (report.orphanedTransactions.isNotEmpty ||
+                  report.corruptedGroups.isNotEmpty)
                 ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(true),
                   child: const Text('Fix Issues'),
@@ -514,7 +523,9 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                 height: 4,
                 width: 40,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.4,
+                  ),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -527,7 +538,11 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                     // Title
                     Row(
                       children: [
-                        const Icon(Icons.swap_horiz_rounded, color: transferColor, size: 28),
+                        const Icon(
+                          Icons.swap_horiz_rounded,
+                          color: transferColor,
+                          size: 28,
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           'Transfer Details',
@@ -553,7 +568,10 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: transferColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(20),
@@ -577,13 +595,17 @@ class _MergedTransferDetailSheet extends StatelessWidget {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () async {
-                              await TransferService.unmergeTransfer(mergedTransfer.sourceTransaction);
+                              await TransferService.unmergeTransfer(
+                                mergedTransfer.sourceTransaction,
+                              );
                               if (context.mounted) {
                                 Navigator.of(context).pop();
                                 context.read<SmsService>().reloadFromCache();
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Transfer unmerged successfully'),
+                                    content: Text(
+                                      'Transfer unmerged successfully',
+                                    ),
                                     backgroundColor: Colors.orange,
                                   ),
                                 );

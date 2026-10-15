@@ -5,9 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/transaction.dart';
-import '../models/custom_category.dart';
-import '../models/standard_category.dart';
+import '../models/app_category.dart';
 import '../models/account.dart';
+import '../screens/categories_screen.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 import '../services/transfer_service.dart';
@@ -22,16 +22,17 @@ class TransactionDetailSheet extends StatefulWidget {
     this.onTransactionUpdated,
   });
 
-  static void show(BuildContext context, Transaction tx,
-      {Function(Transaction)? onUpdated}) {
+  static void show(
+    BuildContext context,
+    Transaction tx, {
+    Function(Transaction)? onUpdated,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => TransactionDetailSheet(
-        tx: tx,
-        onTransactionUpdated: onUpdated,
-      ),
+      builder: (_) =>
+          TransactionDetailSheet(tx: tx, onTransactionUpdated: onUpdated),
     );
   }
 
@@ -41,58 +42,27 @@ class TransactionDetailSheet extends StatefulWidget {
 
 class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   late Transaction _tx;
-  List<StandardCategory> _standardCategories = [];
-  StandardCategory? _selectedStandardCategory;
-  List<CustomCategory> _customCategories = [];
-  CustomCategory? _selectedCustomCategory;
+  List<AppCategory> _categories = [];
+  AppCategory? _selectedCategory;
   List<Account> _accounts = [];
 
   @override
   void initState() {
     super.initState();
     _tx = widget.tx;
-    _loadStandardCategories();
-    _loadCustomCategories();
+    _loadCategories();
     _loadAccounts();
   }
 
-  Future<void> _loadStandardCategories() async {
-    final cats = await LocalStorageService.getAllStandardCategories();
-    final mergedCategories = <String, StandardCategory>{
-      for (final category in StandardCategory.defaultCategories)
-        category.id: category,
-      for (final category in cats) category.id: category,
-    };
-
-    StandardCategory? current;
-    final currentStandardCategoryId = _tx.effectiveStandardCategoryId;
-    if (currentStandardCategoryId != null) {
-      current = mergedCategories[currentStandardCategoryId];
-    }
-
-    if (mounted) {
-      setState(() {
-        _standardCategories = mergedCategories.values.toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-        _selectedStandardCategory = current;
-      });
-    }
-  }
-
-  Future<void> _loadCustomCategories() async {
-    final cats = await LocalStorageService.getAllCustomCategories();
-    CustomCategory? current;
-    if (_tx.customCategoryId != null) {
-      try {
-        current = cats.firstWhere((c) => c.id == _tx.customCategoryId);
-      } catch (_) {}
-    }
-    if (mounted) {
-      setState(() {
-        _customCategories = cats;
-        _selectedCustomCategory = current;
-      });
-    }
+  Future<void> _loadCategories() async {
+    final categories = await LocalStorageService.getAllCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = categories;
+      _selectedCategory = categories
+          .where((c) => c.id == _tx.categoryId)
+          .firstOrNull;
+    });
   }
 
   Future<void> _loadAccounts() async {
@@ -158,8 +128,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               if (_tx.isUserCorrected) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
@@ -204,8 +176,10 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                 borderRadius: BorderRadius.circular(12),
                 onTap: _toggleIgnore,
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   child: Row(
                     children: [
                       Icon(
@@ -236,9 +210,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                                   : 'Tap to exclude from summaries',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -257,18 +231,18 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
           ),
           const SizedBox(height: 16),
 
-          // Category badges - transactions can keep one standard + one custom.
+          // One user-owned category per transaction.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (_selectedStandardCategory != null)
+                if (_selectedCategory != null)
                   _CategoryBadge(
-                    emoji: _selectedStandardCategory!.emoji,
-                    label: _selectedStandardCategory!.displayName,
-                    color: _selectedStandardCategory!.color,
+                    emoji: _selectedCategory!.emoji,
+                    label: _selectedCategory!.name,
+                    color: _selectedCategory!.color,
                     onTap: _showCategoryPicker,
                   )
                 else
@@ -279,25 +253,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                     style: OutlinedButton.styleFrom(
                       textStyle: const TextStyle(fontSize: 12),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                    ),
-                  ),
-                if (_selectedCustomCategory != null)
-                  _CategoryBadge(
-                    emoji: _selectedCustomCategory!.emoji,
-                    label: _selectedCustomCategory!.name,
-                    color: _selectedCustomCategory!.color,
-                    onTap: _showCategoryPicker,
-                  )
-                else
-                  OutlinedButton.icon(
-                    onPressed: _showCategoryPicker,
-                    icon: const Icon(Icons.label_outline, size: 16),
-                    label: const Text('Add My Category'),
-                    style: OutlinedButton.styleFrom(
-                      textStyle: const TextStyle(fontSize: 12),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                     ),
                   ),
               ],
@@ -318,10 +276,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.3),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -415,8 +372,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               children: [
-                _DetailRow('Date & Time',
-                    DateFormat('dd MMM yyyy, hh:mm a').format(_tx.date), theme),
+                _DetailRow(
+                  'Date & Time',
+                  DateFormat('dd MMM yyyy, hh:mm a').format(_tx.date),
+                  theme,
+                ),
                 // Tappable Via (payment source) row
                 InkWell(
                   onTap: _showSourcePicker,
@@ -436,8 +396,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                           children: [
                             Text(
                               _tx.sourceLabel,
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(width: 4),
                             Icon(Icons.edit, size: 14, color: Colors.grey[400]),
@@ -470,15 +431,17 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                               _tx.accountId != null
                                   ? _getAccountDisplayName(_tx.accountId!)
                                   : (_tx.accountLast4 != null
-                                      ? '••••${_tx.accountLast4}'
-                                      : 'Assign account'),
+                                        ? '••••${_tx.accountLast4}'
+                                        : 'Assign account'),
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 fontWeight: FontWeight.w600,
-                                fontStyle: _tx.accountId == null &&
+                                fontStyle:
+                                    _tx.accountId == null &&
                                         _tx.accountLast4 == null
                                     ? FontStyle.italic
                                     : FontStyle.normal,
-                                color: _tx.accountId == null &&
+                                color:
+                                    _tx.accountId == null &&
                                         _tx.accountLast4 == null
                                     ? theme.colorScheme.onSurfaceVariant
                                     : null,
@@ -486,8 +449,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                             ),
                             if (_accounts.isNotEmpty) ...[
                               const SizedBox(width: 4),
-                              Icon(Icons.edit,
-                                  size: 14, color: Colors.grey[400]),
+                              Icon(
+                                Icons.edit,
+                                size: 14,
+                                color: Colors.grey[400],
+                              ),
                             ],
                           ],
                         ),
@@ -497,12 +463,17 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                 ),
                 if (_tx.balance != null)
                   _DetailRow(
-                      'Balance After',
-                      '₹${NumberFormat('#,##,###.##').format(_tx.balance!)}',
-                      theme),
+                    'Balance After',
+                    '₹${NumberFormat('#,##,###.##').format(_tx.balance!)}',
+                    theme,
+                  ),
                 if (_tx.referenceId != null)
-                  _DetailRow('Reference ID', _tx.referenceId!, theme,
-                      copyable: true),
+                  _DetailRow(
+                    'Reference ID',
+                    _tx.referenceId!,
+                    theme,
+                    copyable: true,
+                  ),
 
                 // Transfer information section
                 ..._buildTransferSection(theme),
@@ -555,7 +526,8 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             const SizedBox(height: 8),
             Chip(
               label: Text(
-                  _tx.isCredit ? 'Money In (Credit)' : 'Money Out (Debit)'),
+                _tx.isCredit ? 'Money In (Credit)' : 'Money Out (Debit)',
+              ),
               backgroundColor: _tx.isCredit
                   ? Colors.green.withValues(alpha: 0.2)
                   : Colors.red.withValues(alpha: 0.2),
@@ -594,9 +566,15 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
     final correctedTx = _tx.copyWith(
       type: newType,
       isUserCorrected: true,
+      isSalary: newType == TransactionType.credit && _tx.isSalary,
+      clearTransferGroup: true,
+      clearTransferPartner: true,
+      isTransferSource: false,
+      isTransferDestination: false,
     );
 
-    await LocalStorageService.updateTransaction(correctedTx);
+    await LocalStorageService.updateTransactionType(_tx.id, newType);
+    if (!mounted) return;
 
     setState(() {
       _tx = correctedTx;
@@ -644,8 +622,11 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               Navigator.pop(ctx);
               final note = controller.text.trim();
               await LocalStorageService.updateTransactionNote(
-                  _tx.id, note.isEmpty ? null : note);
-              final updated = _tx.copyWith(note: note.isEmpty ? null : note);
+                _tx.id,
+                note.isEmpty ? null : note,
+              );
+              final updated = _tx.copyWith(note: note, clearNote: note.isEmpty);
+              if (!mounted) return;
               setState(() => _tx = updated);
               widget.onTransactionUpdated?.call(updated);
               // Refresh in-memory list so all screens reflect the change instantly
@@ -687,6 +668,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                 Navigator.pop(ctx);
                 await LocalStorageService.updateTransactionTag(_tx.id, null);
                 final updated = _tx.copyWith(clearTag: true);
+                if (!mounted) return;
                 setState(() => _tx = updated);
                 widget.onTransactionUpdated?.call(updated);
                 // Refresh in-memory list so all screens reflect the change instantly
@@ -701,10 +683,13 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
               Navigator.pop(ctx);
               final tag = controller.text.trim();
               await LocalStorageService.updateTransactionTag(
-                  _tx.id, tag.isEmpty ? null : tag);
+                _tx.id,
+                tag.isEmpty ? null : tag,
+              );
               final updated = tag.isEmpty
                   ? _tx.copyWith(clearTag: true)
                   : _tx.copyWith(tag: tag);
+              if (!mounted) return;
               setState(() => _tx = updated);
               widget.onTransactionUpdated?.call(updated);
               // Refresh in-memory list so all screens reflect the change instantly
@@ -724,6 +709,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
     final newIgnored = !_tx.isIgnored;
     await LocalStorageService.updateTransactionIgnored(_tx.id, newIgnored);
     final updated = _tx.copyWith(isIgnored: newIgnored);
+    if (!mounted) return;
     setState(() => _tx = updated);
     widget.onTransactionUpdated?.call(updated);
     // Refresh in-memory list so home screen summary updates
@@ -731,12 +717,16 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
       context.read<SmsService>().reloadFromCache();
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(newIgnored
-            ? 'Transaction ignored — excluded from summaries'
-            : 'Transaction restored — included in summaries'),
-        backgroundColor: newIgnored ? Colors.orange : Colors.green,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newIgnored
+                ? 'Transaction ignored — excluded from summaries'
+                : 'Transaction restored — included in summaries',
+          ),
+          backgroundColor: newIgnored ? Colors.orange : Colors.green,
+        ),
+      );
     }
   }
 
@@ -753,20 +743,21 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
             children: PaymentSource.values
                 .where((s) => s != PaymentSource.unknown)
                 .map((source) {
-              final isSelected = _tx.source == source;
-              return ListTile(
-                leading: Icon(
-                  _sourceIcon(source),
-                  color: isSelected ? theme.colorScheme.primary : null,
-                ),
-                title: Text(_sourceDisplayName(source)),
-                selected: isSelected,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                onTap: () => _updateSource(ctx, source),
-              );
-            }).toList(),
+                  final isSelected = _tx.source == source;
+                  return ListTile(
+                    leading: Icon(
+                      _sourceIcon(source),
+                      color: isSelected ? theme.colorScheme.primary : null,
+                    ),
+                    title: Text(_sourceDisplayName(source)),
+                    selected: isSelected,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    onTap: () => _updateSource(ctx, source),
+                  );
+                })
+                .toList(),
           ),
           actions: [
             TextButton(
@@ -813,6 +804,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
     Navigator.pop(ctx);
     await LocalStorageService.updateTransactionSource(_tx.id, newSource);
     final updated = _tx.copyWith(source: newSource);
+    if (!mounted) return;
     setState(() => _tx = updated);
     widget.onTransactionUpdated?.call(updated);
     if (mounted) {
@@ -824,7 +816,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
   String _getAccountDisplayName(String accountId) {
     try {
       final account = _accounts.firstWhere((a) => a.id == accountId);
-      return account.displayName;
+      return account.name;
     } catch (_) {
       return _tx.accountLast4 != null ? '••••${_tx.accountLast4}' : accountId;
     }
@@ -863,17 +855,22 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Assign Account',
-                            style: theme.textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        Text(
+                          'Assign Account',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         if (_tx.accountId != null)
                           TextButton(
                             onPressed: () {
                               Navigator.pop(ctx);
                               _updateAccountId(null);
                             },
-                            child: const Text('Remove',
-                                style: TextStyle(color: Colors.red)),
+                            child: const Text(
+                              'Remove',
+                              style: TextStyle(color: Colors.red),
+                            ),
                           ),
                       ],
                     ),
@@ -892,13 +889,13 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
                         account.type == AccountType.creditCard
                             ? Icons.credit_card
                             : account.type == AccountType.wallet
-                                ? Icons.account_balance_wallet
-                                : account.type == AccountType.upi
-                                    ? Icons.phone_android
-                                    : Icons.account_balance,
+                            ? Icons.account_balance_wallet
+                            : account.type == AccountType.upi
+                            ? Icons.phone_android
+                            : Icons.account_balance,
                         color: isSelected ? theme.colorScheme.primary : null,
                       ),
-                      title: Text(account.displayName),
+                      title: Text(account.name),
                       subtitle: Text(account.typeLabel),
                       selected: isSelected,
                       shape: RoundedRectangleBorder(
@@ -924,6 +921,7 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
     final updated = newAccountId != null
         ? _tx.copyWith(accountId: newAccountId)
         : _tx.copyWith(clearAccountId: true);
+    if (!mounted) return;
     setState(() => _tx = updated);
     widget.onTransactionUpdated?.call(updated);
     if (mounted) {
@@ -931,87 +929,91 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
     }
   }
 
-  // Feature 3: Category picker (built-in + custom)
+  // Feature 3: Category picker
   void _showCategoryPicker() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (ctx) => _CategoryPickerSheet(
-        currentStandardId: _tx.effectiveStandardCategoryId,
-        currentCustomId: _tx.customCategoryId,
-        standardCategories: _standardCategories,
-        customCategories: _customCategories,
-        onStandardSelected: (category) async {
-          final legacyCategory =
-              TransactionCategory.fromStandardCategoryId(category.id);
-          await LocalStorageService.updateTransactionStandardCategory(
-            _tx.id,
-            category.id,
-          );
-          final updated = _tx.copyWith(
-            category: legacyCategory,
-            standardCategoryId: category.id,
-            categorySource: 'user',
-            clearCategory: legacyCategory == null,
-          );
-          setState(() {
-            _tx = updated;
-            _selectedStandardCategory = category;
-          });
-          widget.onTransactionUpdated?.call(updated);
-          if (mounted) {
-            context.read<SmsService>().reloadFromCache();
-          }
-        },
-        onCustomSelected: (custom) async {
-          await LocalStorageService.updateTransactionCustomCategory(
-              _tx.id, custom.id);
-          final updated = _tx.copyWith(customCategoryId: custom.id);
-          setState(() {
-            _tx = updated;
-            _selectedCustomCategory = custom;
-          });
-          widget.onTransactionUpdated?.call(updated);
-          // Refresh in-memory list so all screens reflect the change instantly
-          if (mounted) {
-            context.read<SmsService>().reloadFromCache();
-          }
-        },
-        onClearStandardCategory: () async {
-          await LocalStorageService.updateTransactionStandardCategory(
-            _tx.id,
-            null,
-          );
-          final updated = _tx.copyWith(
-            clearStandardCategory: true,
-            clearCategory: true,
-            categorySource: 'user',
-          );
-          setState(() {
-            _tx = updated;
-            _selectedStandardCategory = null;
-          });
-          widget.onTransactionUpdated?.call(updated);
-          if (mounted) {
-            context.read<SmsService>().reloadFromCache();
-          }
-        },
-        onClearCustomCategory: () async {
-          await LocalStorageService.updateTransactionCustomCategory(
-              _tx.id, null);
-          final updated = _tx.copyWith(clearCustomCategory: true);
-          setState(() {
-            _tx = updated;
-            _selectedCustomCategory = null;
-          });
-          widget.onTransactionUpdated?.call(updated);
-          if (mounted) {
-            context.read<SmsService>().reloadFromCache();
-          }
-        },
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.65,
+        child: Column(
+          children: [
+            ListTile(
+              title: const Text('Category'),
+              trailing: TextButton(
+                child: const Text('Manage'),
+                onPressed: () async {
+                  Navigator.pop(sheetContext);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+                  );
+                  if (mounted) await _loadCategories();
+                },
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                children: [
+                  ListTile(
+                    title: const Text('Uncategorized'),
+                    selected: _tx.categoryId == null,
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _setCategory(null);
+                    },
+                  ),
+                  ..._categories.map(
+                    (category) => ListTile(
+                      leading: Text(category.emoji),
+                      title: Text(category.name),
+                      selected: _tx.categoryId == category.id,
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        _setCategory(category);
+                      },
+                    ),
+                  ),
+                  if (_categories.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'Create a category using Manage. Your categories are also available for budgets.',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _setCategory(AppCategory? category) async {
+    try {
+      await LocalStorageService.updateTransactionCategory(_tx.id, category?.id);
+      if (!mounted) return;
+      final updated = _tx.copyWith(
+        categoryId: category?.id,
+        clearCategory: category == null,
+        categorySource: 'user',
+        isUserCorrected: true,
+      );
+      setState(() {
+        _tx = updated;
+        _selectedCategory = category;
+      });
+      widget.onTransactionUpdated?.call(updated);
+      await context.read<SmsService>().reloadFromCache();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update the category.')),
+        );
+      }
+    }
   }
 
   /// Build transfer information section
@@ -1058,14 +1060,24 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
 
     // Transfer group ID
     if (_tx.transferGroupId != null) {
-      widgets.add(_DetailRow(
-          'Transfer Group', _tx.transferGroupId!.substring(0, 8), theme));
+      widgets.add(
+        _DetailRow(
+          'Transfer Group',
+          _tx.transferGroupId!.substring(0, 8),
+          theme,
+        ),
+      );
     }
 
     // Partner transaction info
     if (_tx.transferPartnerId != null) {
-      widgets.add(_DetailRow('Partner Transaction',
-          _tx.transferPartnerId!.substring(0, 8), theme));
+      widgets.add(
+        _DetailRow(
+          'Partner Transaction',
+          _tx.transferPartnerId!.substring(0, 8),
+          theme,
+        ),
+      );
 
       // Add button to view partner transaction
       widgets.add(const SizedBox(height: 8));
@@ -1073,8 +1085,9 @@ class _TransactionDetailSheetState extends State<TransactionDetailSheet> {
         OutlinedButton.icon(
           onPressed: _viewPartnerTransaction,
           icon: const Icon(Icons.open_in_new_rounded, size: 16),
-          label:
-              Text(_tx.isTransferSource ? 'View Destination' : 'View Source'),
+          label: Text(
+            _tx.isTransferSource ? 'View Destination' : 'View Source',
+          ),
           style: OutlinedButton.styleFrom(
             textStyle: const TextStyle(fontSize: 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1181,8 +1194,9 @@ class _DetailRow extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if (copyable) ...[
                 const SizedBox(width: 4),
@@ -1191,12 +1205,16 @@ class _DetailRow extends StatelessWidget {
                     Clipboard.setData(ClipboardData(text: value));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text('Copied!'),
-                          duration: Duration(seconds: 1)),
+                        content: Text('Copied!'),
+                        duration: Duration(seconds: 1),
+                      ),
                     );
                   },
-                  child: Icon(Icons.copy_rounded,
-                      size: 14, color: theme.colorScheme.primary),
+                  child: Icon(
+                    Icons.copy_rounded,
+                    size: 14,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ],
             ],
@@ -1249,254 +1267,6 @@ class _CategoryBadge extends StatelessWidget {
             Icon(Icons.expand_more, size: 14, color: color),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// Feature 3: Sheet showing built-in + custom categories to pick from
-class _CategoryPickerSheet extends StatelessWidget {
-  final String? currentStandardId;
-  final String? currentCustomId;
-  final List<StandardCategory> standardCategories;
-  final List<CustomCategory> customCategories;
-  final void Function(StandardCategory) onStandardSelected;
-  final void Function(CustomCategory) onCustomSelected;
-  final VoidCallback onClearStandardCategory;
-  final VoidCallback onClearCustomCategory;
-
-  const _CategoryPickerSheet({
-    required this.currentStandardId,
-    required this.currentCustomId,
-    required this.standardCategories,
-    required this.customCategories,
-    required this.onStandardSelected,
-    required this.onCustomSelected,
-    required this.onClearStandardCategory,
-    required this.onClearCustomCategory,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final availableStandardCategories = standardCategories.isEmpty
-        ? StandardCategory.defaultCategories
-        : standardCategories;
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.4,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (ctx, sc) => Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Manage Categories',
-                        style: theme.textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                if (currentStandardId != null || currentCustomId != null)
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      if (currentStandardId != null)
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            onClearStandardCategory();
-                          },
-                          child: const Text('Clear Standard',
-                              style: TextStyle(color: Colors.red)),
-                        ),
-                      if (currentCustomId != null)
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            onClearCustomCategory();
-                          },
-                          child: const Text('Clear My Category',
-                              style: TextStyle(color: Colors.red)),
-                        ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView(
-              controller: sc,
-              padding: const EdgeInsets.all(12),
-              children: [
-                // Custom categories section
-                if (customCategories.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                    child: Text('My Categories',
-                        style: theme.textTheme.labelLarge
-                            ?.copyWith(color: theme.colorScheme.primary)),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: customCategories.map((cat) {
-                      final isSelected = cat.id == currentCustomId;
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onCustomSelected(cat);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? cat.color.withValues(alpha: 0.25)
-                                : cat.color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: cat.color
-                                  .withValues(alpha: isSelected ? 0.8 : 0.3),
-                              width: isSelected ? 2 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(cat.emoji,
-                                  style: const TextStyle(fontSize: 16)),
-                              const SizedBox(width: 6),
-                              Text(cat.name,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: cat.color,
-                                  )),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                ],
-
-                ...StandardCategory.defaultGroups.map((group) {
-                  final categoriesById = {
-                    for (final category in availableStandardCategories)
-                      category.id: category,
-                  };
-                  final groupedCategories = group.categoryIds
-                      .map((id) => categoriesById[id])
-                      .whereType<StandardCategory>()
-                      .toList();
-                  if (groupedCategories.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              group.title,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            Text(
-                              group.subtitle,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.outline,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: groupedCategories.map((cat) {
-                          final isSelected = cat.id == currentStandardId;
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              onStandardSelected(cat);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? theme.colorScheme.primaryContainer
-                                    : theme.colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.outline
-                                          .withValues(alpha: 0.3),
-                                  width: isSelected ? 2 : 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(cat.emoji,
-                                      style: const TextStyle(fontSize: 16)),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    cat.displayName,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w700
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? theme.colorScheme.onPrimaryContainer
-                                          : null,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                  );
-                }),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -1,3 +1,5 @@
+import '../utils/money.dart';
+import '../utils/format_utils.dart';
 // lib/screens/spending_breakdown_screen.dart
 
 import 'package:flutter/material.dart';
@@ -44,31 +46,36 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
     for (final tx in transactions) {
       if (!_isInPeriod(tx.date)) continue;
 
-      final key = tx.accountLast4 ?? tx.sender;
+      final key = tx.accountId ?? '${tx.sender}:${tx.accountLast4 ?? ''}';
 
       stats.putIfAbsent(
-          key,
-          () => _AccountStats(
-                key: key,
-                account: accounts.firstWhere(
-                  (a) => a.last4Digits == tx.accountLast4,
-                  orElse: () => Account(
-                    id: 'unknown_$key',
-                    name: tx.sender,
-                    type: _guessAccountType(tx),
-                  ),
-                ),
-              ));
+        key,
+        () => _AccountStats(
+          key: key,
+          account: accounts.firstWhere(
+            (a) => a.id == tx.accountId,
+            orElse: () => Account(
+              id: 'unknown_$key',
+              name: tx.sender,
+              type: _guessAccountType(tx),
+            ),
+          ),
+        ),
+      );
 
-      if (tx.type == TransactionType.debit) {
-        stats[key]!.totalSpent += tx.amount;
+      if (tx.isExpense) {
+        stats[key]!.totalSpent = Money.sum([stats[key]!.totalSpent, tx.amount]);
         stats[key]!.debitCount++;
-      } else if (tx.type == TransactionType.credit) {
-        stats[key]!.totalReceived += tx.amount;
+      } else if (tx.isIncome) {
+        stats[key]!.totalReceived = Money.sum([
+          stats[key]!.totalReceived,
+          tx.amount,
+        ]);
         stats[key]!.creditCount++;
       }
     }
 
+    if (!mounted) return;
     setState(() {
       _transactions = transactions;
       _stats = stats;
@@ -100,9 +107,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Spending Breakdown'),
-      ),
+      appBar: AppBar(title: const Text('Spending Breakdown')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -140,8 +145,10 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
 
   Widget _buildSummaryCard() {
     final totalSpent = _stats.values.fold(0.0, (sum, s) => sum + s.totalSpent);
-    final totalReceived =
-        _stats.values.fold(0.0, (sum, s) => sum + s.totalReceived);
+    final totalReceived = _stats.values.fold(
+      0.0,
+      (sum, s) => sum + s.totalReceived,
+    );
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -157,11 +164,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 icon: Icons.arrow_upward,
               ),
             ),
-            Container(
-              width: 1,
-              height: 50,
-              color: Colors.grey[300],
-            ),
+            Container(width: 1, height: 50, color: Colors.grey[300]),
             Expanded(
               child: _SummaryItem(
                 label: 'Total Received',
@@ -226,8 +229,9 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 children: [
                   CircleAvatar(
                     radius: 20,
-                    backgroundColor:
-                        _getAccountColor(account.type).withValues(alpha: 0.2),
+                    backgroundColor: _getAccountColor(
+                      account.type,
+                    ).withValues(alpha: 0.2),
                     child: Icon(
                       _getAccountIcon(account.type),
                       color: _getAccountColor(account.type),
@@ -269,10 +273,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                       ),
                       Text(
                         '${stat.debitCount} transactions',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 11,
-                        ),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
                       ),
                     ],
                   ),
@@ -284,8 +285,9 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 child: LinearProgressIndicator(
                   value: progress,
                   backgroundColor: Colors.grey[200],
-                  valueColor:
-                      AlwaysStoppedAnimation(_getAccountColor(account.type)),
+                  valueColor: AlwaysStoppedAnimation(
+                    _getAccountColor(account.type),
+                  ),
                   minHeight: 6,
                 ),
               ),
@@ -295,10 +297,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
                 children: [
                   Text(
                     'Received: ₹${_formatAmount(stat.totalReceived)}',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.green[700], fontSize: 12),
                   ),
                   Text(
                     'Net: ₹${_formatAmount(stat.totalReceived - stat.totalSpent)}',
@@ -321,7 +320,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
 
   void _showAccountTransactions(_AccountStats stat) {
     final accountTxs = _transactions.where((tx) {
-      final key = tx.accountLast4 ?? tx.sender;
+      final key = tx.accountId ?? '${tx.sender}:${tx.accountLast4 ?? ''}';
       return key == stat.key && _isInPeriod(tx.date);
     }).toList();
 
@@ -340,8 +339,9 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor:
-                        _getAccountColor(stat.account.type).withValues(alpha: 0.2),
+                    backgroundColor: _getAccountColor(
+                      stat.account.type,
+                    ).withValues(alpha: 0.2),
                     child: Icon(
                       _getAccountIcon(stat.account.type),
                       color: _getAccountColor(stat.account.type),
@@ -435,14 +435,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
     }
   }
 
-  String _formatAmount(double amount) {
-    if (amount >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(2)}K';
-    }
-    return amount.toStringAsFixed(0);
-  }
+  String _formatAmount(double amount) => FormatUtils.formatAmount(amount);
 
   String _formatDate(DateTime date) {
     final months = [
@@ -457,7 +450,7 @@ class _SpendingBreakdownScreenState extends State<SpendingBreakdownScreen> {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
@@ -498,10 +491,7 @@ class _SummaryItem extends StatelessWidget {
             const SizedBox(width: 4),
             Text(
               label,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
           ],
         ),
@@ -518,12 +508,5 @@ class _SummaryItem extends StatelessWidget {
     );
   }
 
-  String _formatAmount(double amount) {
-    if (amount >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(2)}K';
-    }
-    return amount.toStringAsFixed(0);
-  }
+  String _formatAmount(double amount) => FormatUtils.formatAmount(amount);
 }

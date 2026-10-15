@@ -20,7 +20,7 @@ import 'spending_heatmap_screen.dart';
 import 'merchant_rankings_screen.dart';
 import 'emi_tracker_screen.dart';
 import 'alerts_screen.dart';
-import 'custom_categories_screen.dart';
+import 'categories_screen.dart';
 import 'tracking_settings_screen.dart';
 import 'transfer_management_screen.dart';
 import 'ignored_transactions_screen.dart';
@@ -89,17 +89,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const CircularProgressIndicator(),
                   const SizedBox(height: 16),
-                  Text(sms.loadingStatus.isNotEmpty
-                      ? sms.loadingStatus
-                      : 'Reading your messages...'),
+                  Text(
+                    sms.loadingStatus.isNotEmpty
+                        ? sms.loadingStatus
+                        : 'Reading your messages...',
+                  ),
                   if (sms.cachedCount > 0) ...[
                     const SizedBox(height: 8),
                     Text(
                       '${sms.cachedCount} cached transactions loaded',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
                 ],
@@ -107,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          if (sms.error != null) {
+          if (sms.error != null && sms.transactions.isEmpty) {
             return _ErrorView(
               message: sms.error!,
               onRetry: () => sms.loadTransactions(),
@@ -122,6 +121,17 @@ class _HomeScreenState extends State<HomeScreen> {
             child: CustomScrollView(
               slivers: [
                 _buildAppBar(context),
+                if (sms.error != null)
+                  SliverToBoxAdapter(
+                    child: ListTile(
+                      leading: const Icon(Icons.info_outline),
+                      title: Text(sms.error!),
+                      trailing: TextButton(
+                        onPressed: () => sms.loadTransactions(),
+                        child: const Text('Retry'),
+                      ),
+                    ),
+                  ),
                 if (sms.isLoading)
                   SliverToBoxAdapter(
                     child: Column(
@@ -157,19 +167,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text(
                             sms.currentCycleLabel,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           TextButton(
                             onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => AllTransactionsScreen(
-                                    filter: _selectedFilter),
+                                  filter: _selectedFilter,
+                                ),
                               ),
                             ),
                             child: const Text('See All'),
@@ -183,7 +190,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       (context, i) => TransactionCard(
                         tx: recent[i],
                         accountDisplayName: sms.getAccountDisplayName(
-                            recent[i].accountId, recent[i].accountLast4),
+                          recent[i].accountId,
+                          recent[i].accountLast4,
+                        ),
                         onTap: () =>
                             TransactionDetailSheet.show(context, recent[i]),
                         onSwipeIgnore: (tx) => _handleSwipeIgnore(context, tx),
@@ -256,7 +265,9 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const TransferManagementScreen()),
+              MaterialPageRoute(
+                builder: (_) => const TransferManagementScreen(),
+              ),
             );
           },
         ),
@@ -303,7 +314,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const SpendingBreakdownScreen()),
+                    builder: (_) => const SpendingBreakdownScreen(),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -314,7 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () async {
                   await Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const SalaryCycleScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const SalaryCycleScreen(),
+                    ),
                   );
                   if (mounted) {
                     context.read<SmsService>().reloadFromCache();
@@ -324,12 +338,13 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
               _QuickActionButton(
                 icon: Icons.category,
-                label: 'Categories',
+                label: 'Breakdown',
                 color: Colors.teal,
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const CategoryBreakdownScreen()),
+                    builder: (_) => const CategoryBreakdownScreen(),
+                  ),
                 ),
               ),
             ],
@@ -355,7 +370,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const SpendingHeatmapScreen()),
+                    builder: (_) => const SpendingHeatmapScreen(),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -366,7 +382,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const MerchantRankingsScreen()),
+                    builder: (_) => const MerchantRankingsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -387,12 +404,11 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _QuickActionButton(
                 icon: Icons.label_outline,
-                label: 'My Labels',
+                label: 'Categories',
                 color: Colors.teal,
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(
-                      builder: (_) => const CustomCategoriesScreen()),
+                  MaterialPageRoute(builder: (_) => const CategoriesScreen()),
                 ),
               ),
               const SizedBox(width: 8),
@@ -403,7 +419,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const TrackingSettingsScreen()),
+                    builder: (_) => const TrackingSettingsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -414,7 +431,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const IgnoredTransactionsScreen()),
+                    builder: (_) => const IgnoredTransactionsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -451,29 +469,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.notifications_active,
-                          color: Colors.orange, size: 20),
+                      const Icon(
+                        Icons.notifications_active,
+                        color: Colors.orange,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '$_unreadAlertCount unread alert${_unreadAlertCount > 1 ? 's' : ''}',
                         style: const TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13),
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                       const Spacer(),
-                      const Icon(Icons.arrow_forward_ios,
-                          size: 14, color: Colors.orange),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        size: 14,
+                        color: Colors.orange,
+                      ),
                     ],
                   ),
                 ),
@@ -491,7 +519,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final name = tx.sender.trim();
       if (name.isNotEmpty) banks.add(name);
     }
-    final sorted = banks.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final sorted = banks.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return sorted;
   }
 
@@ -533,19 +562,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       onSelected: (_) => setState(() => _selectedBank = null),
                     ),
                   ),
-                  ...banks.map((bank) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(
-                        bank.length > 14 ? '${bank.substring(0, 14)}...' : bank,
-                        style: const TextStyle(fontSize: 12),
+                  ...banks.map(
+                    (bank) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(
+                          bank.length > 14
+                              ? '${bank.substring(0, 14)}...'
+                              : bank,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        selected: _selectedBank == bank,
+                        onSelected: (_) => setState(() {
+                          _selectedBank = _selectedBank == bank ? null : bank;
+                        }),
                       ),
-                      selected: _selectedBank == bank,
-                      onSelected: (_) => setState(() {
-                        _selectedBank = _selectedBank == bank ? null : bank;
-                      }),
                     ),
-                  )),
+                  ),
                 ],
               ),
             ),
@@ -599,12 +632,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Swipe left → Toggle credit ↔ debit
-  Future<void> _handleSwipeToggleType(
-      BuildContext ctx, Transaction tx) async {
-    final newType =
-        tx.isCredit ? TransactionType.debit : TransactionType.credit;
-    final corrected = tx.copyWith(type: newType, isUserCorrected: true);
-    await LocalStorageService.updateTransaction(corrected);
+  Future<void> _handleSwipeToggleType(BuildContext ctx, Transaction tx) async {
+    final newType = tx.isCredit
+        ? TransactionType.debit
+        : TransactionType.credit;
+    await LocalStorageService.updateTransactionType(tx.id, newType);
     if (ctx.mounted) {
       ctx.read<SmsService>().reloadFromCache();
       ScaffoldMessenger.of(ctx).showSnackBar(
@@ -612,15 +644,17 @@ class _HomeScreenState extends State<HomeScreen> {
           content: Text(
             'Changed to ${newType == TransactionType.credit ? 'Money In' : 'Money Out'}',
           ),
-          backgroundColor:
-              newType == TransactionType.credit ? Colors.green : Colors.red,
+          backgroundColor: newType == TransactionType.credit
+              ? Colors.green
+              : Colors.red,
           action: SnackBarAction(
             label: 'Undo',
             textColor: Colors.white,
             onPressed: () async {
-              final reverted =
-                  corrected.copyWith(type: tx.type, isUserCorrected: tx.isUserCorrected);
-              await LocalStorageService.updateTransaction(reverted);
+              await LocalStorageService.updateTransactionType(tx.id, tx.type);
+              if (tx.isSalary) {
+                await LocalStorageService.markAsSalary(tx.id, true);
+              }
               if (ctx.mounted) {
                 ctx.read<SmsService>().reloadFromCache();
               }

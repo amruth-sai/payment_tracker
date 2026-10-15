@@ -69,28 +69,42 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
           children: [
             Column(
               children: [
-                Text('₹${_fmt(_totalBurden)}',
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold)),
-                const Text('Monthly EMI Burden',
-                    style: TextStyle(fontSize: 12)),
+                Text(
+                  '₹${_fmt(_totalBurden)}',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'Monthly EMI Burden',
+                  style: TextStyle(fontSize: 12),
+                ),
               ],
             ),
             Container(width: 1, height: 40, color: Colors.grey[400]),
             Column(
               children: [
-                Text('$active',
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(
+                  '$active',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Text('Active EMIs', style: TextStyle(fontSize: 12)),
               ],
             ),
             Container(width: 1, height: 40, color: Colors.grey[400]),
             Column(
               children: [
-                Text('${_emis.length}',
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(
+                  '${_emis.length}',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Text('Detected', style: TextStyle(fontSize: 12)),
               ],
             ),
@@ -107,8 +121,10 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
         children: [
           Icon(Icons.event_repeat, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text('No recurring EMIs detected',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+          Text(
+            'No recurring EMIs detected',
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+          ),
           const SizedBox(height: 8),
           const Text(
             'We analyze your transactions to find recurring monthly payments.\n'
@@ -127,23 +143,30 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ExpansionTile(
         leading: CircleAvatar(
-          backgroundColor:
-              emi.isActive ? Colors.orange[100] : Colors.grey[200],
+          backgroundColor: emi.isActive ? Colors.orange[100] : Colors.grey[200],
           child: Icon(
             Icons.event_repeat,
             color: emi.isActive ? Colors.orange[700] : Colors.grey,
           ),
         ),
-        title: Text(emi.merchant,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(
+          emi.merchant,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         subtitle: Row(
           children: [
-            Text('₹${_fmt(emi.amount)}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, color: Colors.orange)),
+            Text(
+              '₹${_fmt(emi.amount)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
+            ),
             const Text(' · ', style: TextStyle(color: Colors.grey)),
-            Text('$dayStr of every month',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(
+              '$dayStr of every month',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
             if (!emi.isActive) ...[
               const SizedBox(width: 8),
               Container(
@@ -152,8 +175,10 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
                   color: Colors.grey[300],
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text('Inactive',
-                    style: TextStyle(fontSize: 10, color: Colors.grey)),
+                child: const Text(
+                  'Inactive',
+                  style: TextStyle(fontSize: 10, color: Colors.grey),
+                ),
               ),
             ],
           ],
@@ -168,16 +193,19 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _detailItem('Occurrences', '${emi.totalDetected}'),
-                    _detailItem('Est. Total',
-                        '₹${_fmt(emi.estimatedTotal?.toDouble() ?? 0.0)}'),
+                    _detailItem(
+                      'Est. Total',
+                      '₹${_fmt(emi.estimatedTotal?.toDouble() ?? 0.0)}',
+                    ),
                     if (emi.remainingCount != null)
                       _detailItem('Remaining', '~${emi.remainingCount}'),
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('Payment History',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const Text(
+                  'Payment History',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 6,
@@ -189,8 +217,7 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
                         style: const TextStyle(fontSize: 10),
                       ),
                       visualDensity: VisualDensity.compact,
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       padding: EdgeInsets.zero,
                     );
                   }).toList(),
@@ -206,11 +233,11 @@ class _EMITrackerScreenState extends State<EMITrackerScreen> {
   Widget _detailItem(String label, String value) {
     return Column(
       children: [
-        Text(value,
-            style:
-                const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        Text(label,
-            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
       ],
     );
   }

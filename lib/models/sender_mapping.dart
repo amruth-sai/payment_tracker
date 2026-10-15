@@ -8,7 +8,8 @@ class SenderMapping {
   final String senderId; // The SMS sender ID (e.g., HDFCBK, ICICIB)
   final String accountId; // The parent account ID this sender belongs to
   final DateTime createdAt;
-  final bool isUserAssigned; // true if user manually assigned, false if auto-detected
+  final bool
+  isUserAssigned; // true if user manually assigned, false if auto-detected
 
   SenderMapping({
     required this.id,
@@ -81,7 +82,9 @@ class DiscoveredSender {
       'message_count': messageCount,
       'first_seen': firstSeen.millisecondsSinceEpoch,
       'last_seen': lastSeen.millisecondsSinceEpoch,
-      'sample_messages': sampleMessages.join('|||'), // Use delimiter to store list
+      'sample_messages': sampleMessages.join(
+        '|||',
+      ), // Use delimiter to store list
       'suggested_account_name': suggestedAccountName,
       'suggested_account_type': suggestedAccountType,
     };
@@ -93,7 +96,10 @@ class DiscoveredSender {
       messageCount: map['message_count'] as int,
       firstSeen: DateTime.fromMillisecondsSinceEpoch(map['first_seen'] as int),
       lastSeen: DateTime.fromMillisecondsSinceEpoch(map['last_seen'] as int),
-      sampleMessages: (map['sample_messages'] as String? ?? '').split('|||').where((s) => s.isNotEmpty).toList(),
+      sampleMessages: (map['sample_messages'] as String? ?? '')
+          .split('|||')
+          .where((s) => s.isNotEmpty)
+          .toList(),
       suggestedAccountName: map['suggested_account_name'] as String?,
       suggestedAccountType: map['suggested_account_type'] as String?,
     );
@@ -124,16 +130,16 @@ class AccountWithSenders {
   final List<SenderMapping> senderMappings;
   final List<String> senderIds; // Convenient list of just the sender IDs
 
-  AccountWithSenders({
-    required this.account,
-    required this.senderMappings,
-  }) : senderIds = senderMappings.map((m) => m.senderId).toList();
+  AccountWithSenders({required this.account, required this.senderMappings})
+    : senderIds = senderMappings.map((m) => m.senderId).toList();
 
   bool hasSender(String senderId) {
     return senderIds.contains(senderId);
   }
 
   int get totalSenders => senderMappings.length;
-  int get userAssignedSenders => senderMappings.where((m) => m.isUserAssigned).length;
-  int get autoAssignedSenders => senderMappings.where((m) => !m.isUserAssigned).length;
+  int get userAssignedSenders =>
+      senderMappings.where((m) => m.isUserAssigned).length;
+  int get autoAssignedSenders =>
+      senderMappings.where((m) => !m.isUserAssigned).length;
 }

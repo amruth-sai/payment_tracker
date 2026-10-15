@@ -1,67 +1,21 @@
+import '../utils/money.dart';
 // lib/services/budget_service.dart
 
 import '../models/budget.dart';
-import '../models/custom_category.dart';
-import '../models/standard_category.dart';
+import '../models/app_category.dart';
 import '../models/transaction.dart';
 import 'local_storage_service.dart';
 
 /// Manages budgets and generates spending-based budget suggestions.
 class BudgetService {
-  static const String customCategoryPrefix = Budget.customCategoryPrefix;
-  static const Set<String> _nonBudgetableCategoryIds = {
-    'salary',
-    'cashback',
-    'transfer',
-    'uncategorized',
+  static Future<Map<String, AppCategory>> loadBudgetCategories() async => {
+    for (final category in await LocalStorageService.getAllCategories())
+      category.id: category,
   };
 
-  static Future<Map<String, StandardCategory>> loadBudgetCategories() async {
-    final categories = await LocalStorageService.getAllStandardCategories();
-    final customCategories = await LocalStorageService.getAllCustomCategories();
-    return {
-      for (final category in StandardCategory.defaultCategories)
-        category.id: category,
-      for (final category in categories) category.id: category,
-      for (var index = 0; index < customCategories.length; index++)
-        '$customCategoryPrefix${customCategories[index].id}':
-            _customBudgetCategory(customCategories[index], index),
-    };
-  }
-
-  static StandardCategory _customBudgetCategory(
-      CustomCategory category, int index) {
-    return StandardCategory(
-      id: '$customCategoryPrefix${category.id}',
-      name: category.name,
-      displayName: 'My: ${category.name}',
-      emoji: category.emoji,
-      colorValue: category.colorValue,
-      sortOrder: 10000 + index,
-      createdAt: category.createdAt,
-    );
-  }
-
-  /// A My Category takes precedence over the underlying standard category.
-  static String categoryIdForTransaction(Transaction transaction) {
-    final customId = transaction.customCategoryId;
-    if (customId != null && customId.isNotEmpty) {
-      return '$customCategoryPrefix$customId';
-    }
-    return transaction.effectiveStandardCategoryId ?? 'uncategorized';
-  }
-
-  static bool isBudgetExpense(Transaction transaction) {
-    if (!transaction.isDebit ||
-        transaction.isIgnored ||
-        transaction.isPartOfTransfer ||
-        transaction.isSalary) {
-      return false;
-    }
-    const excludedStandardCategories = {'salary', 'cashback', 'transfer'};
-    return !excludedStandardCategories
-        .contains(transaction.effectiveStandardCategoryId);
-  }
+  static String? categoryIdForTransaction(Transaction transaction) =>
+      transaction.categoryId;
+  static bool isBudgetExpense(Transaction transaction) => transaction.isExpense;
 
   /// Spending that has no budget for its effective category.
   static List<Transaction> outsideBudgetTransactions({
@@ -75,7 +29,8 @@ class BudgetService {
         .where((tx) => start == null || !tx.date.isBefore(start))
         .where((tx) => end == null || !tx.date.isAfter(end))
         .where(
-            (tx) => !budgetCategoryIds.contains(categoryIdForTransaction(tx)))
+          (tx) => !budgetCategoryIds.contains(categoryIdForTransaction(tx)),
+        )
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }
@@ -88,21 +43,23 @@ class BudgetService {
     final suggestions = <String, double>{};
 
     for (final entry in categoryMonthly.entries) {
-      if (_nonBudgetableCategoryIds.contains(entry.key) || entry.value <= 0) {
+      if (entry.value <= 0) {
         continue;
       }
 
       final buffered = entry.value * 1.1;
-      final capped =
-          monthlyIncome > 0 ? buffered.clamp(500.0, monthlyIncome) : buffered;
-      suggestions[entry.key] = ((capped / 500).round() * 500).toDouble();
+      final capped = monthlyIncome > 0
+          ? buffered.clamp(0.0, monthlyIncome)
+          : buffered;
+      suggestions[entry.key] = (capped * 100).round() / 100;
     }
 
     return suggestions;
   }
 
   static Map<String, double> _getMonthlyAverages(
-      List<Transaction> transactions) {
+    List<Transaction> transactions,
+  ) {
     final debits = transactions.where(isBudgetExpense).toList();
     if (debits.isEmpty) return {};
 
@@ -110,9 +67,12 @@ class BudgetService {
     for (final tx in debits) {
       final monthKey = '${tx.date.year}-${tx.date.month}';
       final categoryId = categoryIdForTransaction(tx);
+      if (categoryId == null) continue;
       monthlyTotals.putIfAbsent(monthKey, () => {});
-      monthlyTotals[monthKey]![categoryId] =
-          (monthlyTotals[monthKey]![categoryId] ?? 0) + tx.amount;
+      monthlyTotals[monthKey]![categoryId] = Money.sum([
+        monthlyTotals[monthKey]![categoryId] ?? 0,
+        tx.amount,
+      ]);
     }
 
     if (monthlyTotals.isEmpty) return {};
@@ -121,7 +81,10 @@ class BudgetService {
     final numMonths = monthlyTotals.length;
     for (final monthly in monthlyTotals.values) {
       for (final entry in monthly.entries) {
-        averages[entry.key] = (averages[entry.key] ?? 0) + entry.value;
+        averages[entry.key] = Money.sum([
+          averages[entry.key] ?? 0,
+          entry.value,
+        ]);
       }
     }
 
@@ -137,7 +100,8 @@ class BudgetService {
     if (budgets.isEmpty) return [];
 
     final effectiveEnd = end ?? (start != null ? DateTime.now() : null);
-    final baseTransactions = transactions ??
+    final baseTransactions =
+        transactions ??
         await _loadTransactionsForRange(start: start, end: effectiveEnd);
     final currentTransactions = _filterToRange(
       baseTransactions,
@@ -149,28 +113,33 @@ class BudgetService {
     final categorySpent = <String, double>{};
     for (final tx in currentTransactions.where(isBudgetExpense)) {
       final categoryId = categoryIdForTransaction(tx);
-      categorySpent[categoryId] = (categorySpent[categoryId] ?? 0) + tx.amount;
+      if (categoryId == null) continue;
+      categorySpent[categoryId] = Money.sum([
+        categorySpent[categoryId] ?? 0,
+        tx.amount,
+      ]);
     }
 
-    final result = budgets
-        .map((budget) {
-          final category = categoriesById[budget.standardCategoryId];
-          if (category == null) return null;
+    final result =
+        budgets
+            .map((budget) {
+              final category = categoriesById[budget.categoryId];
+              if (category == null) return null;
 
-          final spent = categorySpent[budget.standardCategoryId] ?? 0;
-          final percentage = budget.monthlyLimit > 0
-              ? (spent / budget.monthlyLimit * 100)
-              : 0.0;
-          return BudgetStatus(
-            budget: budget,
-            standardCategory: category,
-            spent: spent,
-            percentage: percentage,
-          );
-        })
-        .whereType<BudgetStatus>()
-        .toList()
-      ..sort((a, b) => b.percentage.compareTo(a.percentage));
+              final spent = categorySpent[budget.categoryId] ?? 0;
+              final percentage = budget.monthlyLimit > 0
+                  ? (spent / budget.monthlyLimit * 100)
+                  : 0.0;
+              return BudgetStatus(
+                budget: budget,
+                category: category,
+                spent: spent,
+                percentage: percentage,
+              );
+            })
+            .whereType<BudgetStatus>()
+            .toList()
+          ..sort((a, b) => b.percentage.compareTo(a.percentage));
 
     return result;
   }
@@ -212,7 +181,8 @@ class BudgetService {
   }
 
   static List<Transaction> _filterToCurrentMonth(
-      List<Transaction> transactions) {
+    List<Transaction> transactions,
+  ) {
     final now = DateTime.now();
     return transactions
         .where((tx) => tx.date.year == now.year && tx.date.month == now.month)
@@ -233,20 +203,20 @@ class BudgetService {
       ..sort((a, b) => b.percentage.compareTo(a.percentage));
   }
 
-  static bool isBudgetableCategory(StandardCategory category) {
-    return !_nonBudgetableCategoryIds.contains(category.id);
+  static bool isBudgetableCategory(AppCategory category) {
+    return true;
   }
 }
 
 class BudgetStatus {
   final Budget budget;
-  final StandardCategory standardCategory;
+  final AppCategory category;
   final double spent;
   final double percentage;
 
   BudgetStatus({
     required this.budget,
-    required this.standardCategory,
+    required this.category,
     required this.spent,
     required this.percentage,
   });

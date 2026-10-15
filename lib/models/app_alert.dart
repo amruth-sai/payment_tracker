@@ -41,15 +41,11 @@ class AppAlert {
   factory AppAlert.fromMap(Map<String, dynamic> map) {
     return AppAlert(
       id: map['id'] as String,
-      type: AlertType.values.firstWhere(
-        (t) => t.name == map['type'],
-        orElse: () => AlertType.anomaly,
-      ),
+      type: AlertType.values.firstWhere((t) => t.name == map['type']),
       title: map['title'] as String,
       message: map['message'] as String,
       severity: AlertSeverity.values.firstWhere(
         (s) => s.name == map['severity'],
-        orElse: () => AlertSeverity.info,
       ),
       transactionId: map['transaction_id'] as String?,
       isRead: (map['is_read'] as int?) == 1,

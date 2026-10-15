@@ -5,7 +5,8 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.11.0 <4.0.0'
+  flutter: '>=3.41.0'
 
 dependencies:
   flutter:
@@ -19,11 +20,14 @@ dependencies:
   path: ^1.8.3                # Path utilities for database
   uuid: ^4.0.0                # UUID generation for dynamic categories
   share_plus: ^11.1.0         # Android share sheet for transaction exports
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  # sqlite3 v2 avoids native-asset hook failures with SDK paths containing spaces.
+  sqflite_common_ffi: ">=2.3.7 <2.4.0"
 
 dependency_overrides:
   # 2.6.x uses a native-asset hook that fails when Flutter is under a Windows path with spaces.

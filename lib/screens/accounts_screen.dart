@@ -58,8 +58,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _accounts.isEmpty
-              ? _buildEmptyState()
-              : _buildAccountsList(),
+          ? _buildEmptyState()
+          : _buildAccountsList(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddAccountDialog(),
         icon: const Icon(Icons.add),
@@ -81,10 +81,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
           const SizedBox(height: 16),
           Text(
             'No accounts found',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),
           Text(
@@ -98,10 +95,12 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 
   Widget _buildAccountsList() {
-    final bankAccounts =
-        _accounts.where((a) => a.type == AccountType.bankAccount).toList();
-    final creditCards =
-        _accounts.where((a) => a.type == AccountType.creditCard).toList();
+    final bankAccounts = _accounts
+        .where((a) => a.type == AccountType.bankAccount)
+        .toList();
+    final creditCards = _accounts
+        .where((a) => a.type == AccountType.creditCard)
+        .toList();
     final wallets = _accounts
         .where((a) => a.type == AccountType.wallet || a.type == AccountType.upi)
         .toList();
@@ -134,9 +133,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
           const SizedBox(width: 8),
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -148,7 +147,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: _getAccountColor(account.type).withValues(alpha: 0.2),
+          backgroundColor: _getAccountColor(
+            account.type,
+          ).withValues(alpha: 0.2),
           child: Icon(
             _getAccountIcon(account.type),
             color: _getAccountColor(account.type),
@@ -298,11 +299,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
       await _loadAccounts();
       if (mounted) {
         context.read<SmsService>().reloadFromCache();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account updated'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Account updated')));
       }
     }
   }
@@ -329,10 +328,12 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.account?.name ?? '');
-    _last4Controller =
-        TextEditingController(text: widget.account?.last4Digits ?? '');
-    _bankNameController =
-        TextEditingController(text: widget.account?.bankName ?? '');
+    _last4Controller = TextEditingController(
+      text: widget.account?.last4Digits ?? '',
+    );
+    _bankNameController = TextEditingController(
+      text: widget.account?.bankName ?? '',
+    );
     _selectedType = widget.account?.type ?? AccountType.bankAccount;
   }
 
@@ -399,10 +400,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: Text(isEditing ? 'Save' : 'Add'),
-        ),
+        FilledButton(onPressed: _save, child: Text(isEditing ? 'Save' : 'Add')),
       ],
     );
   }
@@ -429,7 +427,8 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
     }
 
     final account = Account(
-      id: widget.account?.id ??
+      id:
+          widget.account?.id ??
           'manual_${DateTime.now().millisecondsSinceEpoch}',
       name: _nameController.text.trim(),
       type: _selectedType,

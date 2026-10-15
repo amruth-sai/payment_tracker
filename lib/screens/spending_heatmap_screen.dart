@@ -1,3 +1,4 @@
+import '../utils/money.dart';
 // lib/screens/spending_heatmap_screen.dart
 
 import 'package:flutter/material.dart';
@@ -41,11 +42,9 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
     }
 
     for (final tx in _allTransactions) {
-      if (tx.date.year == year &&
-          tx.date.month == month &&
-          tx.type == TransactionType.debit) {
+      if (tx.date.year == year && tx.date.month == month && tx.isExpense) {
         final day = tx.date.day;
-        daily[day] = (daily[day] ?? 0) + tx.amount;
+        daily[day] = Money.sum([daily[day] ?? 0, tx.amount]);
       }
     }
 
@@ -54,6 +53,7 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
       if (v > maxVal) maxVal = v;
     }
 
+    if (!mounted) return;
     setState(() {
       _dailySpending = daily;
       _maxDailySpend = maxVal;
@@ -80,8 +80,18 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
 
   Widget _buildMonthSelector() {
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -92,7 +102,10 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
               setState(() {
-                _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
+                _currentMonth = DateTime(
+                  _currentMonth.year,
+                  _currentMonth.month - 1,
+                );
               });
               _computeMonth();
             },
@@ -105,7 +118,10 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
             icon: const Icon(Icons.chevron_right),
             onPressed: () {
               final now = DateTime.now();
-              final next = DateTime(_currentMonth.year, _currentMonth.month + 1);
+              final next = DateTime(
+                _currentMonth.year,
+                _currentMonth.month + 1,
+              );
               if (next.isBefore(DateTime(now.year, now.month + 1))) {
                 setState(() => _currentMonth = next);
                 _computeMonth();
@@ -123,7 +139,10 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('Less', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          const Text(
+            'Less',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+          ),
           const SizedBox(width: 4),
           for (double i = 0; i <= 1; i += 0.25)
             Container(
@@ -136,7 +155,10 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
               ),
             ),
           const SizedBox(width: 4),
-          const Text('More', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          const Text(
+            'More',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+          ),
         ],
       ),
     );
@@ -156,13 +178,19 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
         children: [
           Row(
             children: dayLabels
-                .map((d) => Expanded(
-                      child: Center(
-                        child: Text(d,
-                            style:
-                                const TextStyle(fontSize: 11, color: Colors.grey)),
+                .map(
+                  (d) => Expanded(
+                    child: Center(
+                      child: Text(
+                        d,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                       ),
-                    ))
+                    ),
+                  ),
+                )
                 .toList(),
           ),
           const SizedBox(height: 4),
@@ -180,9 +208,11 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
                 }
                 final day = index - (firstWeekday - 1) + 1;
                 final amount = _dailySpending[day] ?? 0;
-                final intensity =
-                    _maxDailySpend > 0 ? (amount / _maxDailySpend) : 0.0;
-                final isToday = DateTime.now().year == year &&
+                final intensity = _maxDailySpend > 0
+                    ? (amount / _maxDailySpend)
+                    : 0.0;
+                final isToday =
+                    DateTime.now().year == year &&
                     DateTime.now().month == month &&
                     DateTime.now().day == day;
 
@@ -203,8 +233,9 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
                       '$day',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight:
-                            isToday ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isToday
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         color: intensity > 0.6 ? Colors.white : Colors.black87,
                       ),
                     ),
@@ -257,9 +288,11 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
   Widget _summaryItem(String label, String value) {
     return Column(
       children: [
-        Text(value,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(
+          value,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
         const SizedBox(height: 2),
         Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
       ],
@@ -271,9 +304,8 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
       return tx.date.year == _currentMonth.year &&
           tx.date.month == _currentMonth.month &&
           tx.date.day == day &&
-          tx.type == TransactionType.debit;
-    }).toList()
-      ..sort((a, b) => b.amount.compareTo(a.amount));
+          tx.isExpense;
+    }).toList()..sort((a, b) => b.amount.compareTo(a.amount));
 
     showModalBottomSheet(
       context: context,
@@ -291,14 +323,17 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
                   Text(
                     '${_currentMonth.month}/$day — ',
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Text(
                     '₹${_fmt(amount)} spent',
                     style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
                   ),
                 ],
               ),
@@ -315,16 +350,21 @@ class _SpendingHeatmapScreenState extends State<SpendingHeatmapScreen> {
                         return ListTile(
                           leading: CircleAvatar(
                             backgroundColor: Colors.red[50],
-                            child: Text(tx.category?.emoji ?? '💳',
-                                style: const TextStyle(fontSize: 18)),
+                            child: const Text(
+                              '💳',
+                              style: TextStyle(fontSize: 18),
+                            ),
                           ),
-                          title: Text(tx.merchant ?? tx.sender,
-                              style: const TextStyle(fontSize: 14)),
+                          title: Text(
+                            tx.merchant ?? tx.sender,
+                            style: const TextStyle(fontSize: 14),
+                          ),
                           trailing: Text(
                             '-₹${_fmt(tx.amount)}',
                             style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w600),
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         );
                       },

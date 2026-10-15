@@ -1,10 +1,10 @@
+import '../utils/money.dart';
 // lib/screens/category_breakdown_screen.dart
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
-import '../models/standard_category.dart';
-import '../models/custom_category.dart';
+import '../models/app_category.dart';
 import '../services/local_storage_service.dart';
 
 class CategoryBreakdownScreen extends StatefulWidget {
@@ -18,14 +18,18 @@ class CategoryBreakdownScreen extends StatefulWidget {
 class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
   Map<String, double> _categoryTotals = {};
   Map<String, int> _categoryCounts = {};
-  Map<String, StandardCategory> _standardCategories = {};
-  Map<String, CustomCategory> _customCategories = {};
+  Map<String, AppCategory> _categories = {};
   List<Transaction> _periodTransactions = [];
   bool _isLoading = true;
   String _period = '30d';
   int? _touchedIndex;
 
-  final _periods = {'7d': '7 Days', '30d': '30 Days', '90d': '90 Days', 'all': 'All'};
+  final _periods = {
+    '7d': '7 Days',
+    '30d': '30 Days',
+    '90d': '90 Days',
+    'all': 'All',
+  };
 
   @override
   void initState() {
@@ -36,13 +40,16 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     var transactions = await LocalStorageService.getTrackedTransactions();
-    final standardCategories = await LocalStorageService.getAllStandardCategories();
-    final customCategories = await LocalStorageService.getAllCustomCategories();
+    final categories = await LocalStorageService.getAllCategories();
 
     // Filter by period
     final now = DateTime.now();
     if (_period != 'all') {
-      final days = _period == '7d' ? 7 : _period == '30d' ? 30 : 90;
+      final days = _period == '7d'
+          ? 7
+          : _period == '30d'
+          ? 30
+          : 90;
       final cutoff = now.subtract(Duration(days: days));
       transactions = transactions.where((t) => t.date.isAfter(cutoff)).toList();
     }
@@ -50,19 +57,19 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
     // Sum debits by category
     final totals = <String, double>{};
     final counts = <String, int>{};
-    for (final tx in transactions.where((t) => t.isDebit)) {
+    for (final tx in transactions.where((t) => t.isExpense)) {
       final cat = _categoryId(tx);
-      totals[cat] = (totals[cat] ?? 0) + tx.amount;
+      totals[cat] = Money.sum([totals[cat] ?? 0, tx.amount]);
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
 
+    if (!mounted) return;
     setState(() {
       _categoryTotals = Map.fromEntries(
         totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
       );
       _categoryCounts = counts;
-      _standardCategories = {for (final category in standardCategories) category.id: category};
-      _customCategories = {for (final category in customCategories) category.id: category};
+      _categories = {for (final category in categories) category.id: category};
       _periodTransactions = transactions;
       _isLoading = false;
     });
@@ -75,15 +82,15 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _categoryTotals.isEmpty
-              ? _buildEmpty()
-              : Column(
-                  children: [
-                    _buildPeriodSelector(),
-                    SizedBox(height: 220, child: _buildPieChart()),
-                    const Divider(),
-                    Expanded(child: _buildCategoryList()),
-                  ],
-                ),
+          ? _buildEmpty()
+          : Column(
+              children: [
+                _buildPeriodSelector(),
+                SizedBox(height: 220, child: _buildPieChart()),
+                const Divider(),
+                Expanded(child: _buildCategoryList()),
+              ],
+            ),
     );
   }
 
@@ -181,7 +188,10 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: color.withValues(alpha: 0.2),
-            child: Text(_categoryEmoji(cat), style: const TextStyle(fontSize: 18)),
+            child: Text(
+              _categoryEmoji(cat),
+              style: const TextStyle(fontSize: 18),
+            ),
           ),
           title: Text(
             _categoryName(cat),
@@ -209,7 +219,10 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
             children: [
               Text(
                 '₹${_fmt(amount)}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
               ),
               Text(
                 '${pct.toStringAsFixed(1)}%',
@@ -225,7 +238,7 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
 
   void _showCategoryTransactions(String category) async {
     final txs = _periodTransactions
-        .where((t) => t.isDebit && _categoryId(t) == category)
+        .where((t) => t.isExpense && _categoryId(t) == category)
         .toList();
     if (!mounted) return;
     showModalBottomSheet(
@@ -240,14 +253,23 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Text(_categoryEmoji(category), style: const TextStyle(fontSize: 24)),
+                  Text(
+                    _categoryEmoji(category),
+                    style: const TextStyle(fontSize: 24),
+                  ),
                   const SizedBox(width: 8),
-                  Text(_categoryName(category),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    _categoryName(category),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const Spacer(),
                   IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context)),
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ],
               ),
             ),
@@ -264,7 +286,9 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
                     trailing: Text(
                       '-₹${_fmt(tx.amount)}',
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.red),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
                     ),
                   );
                 },
@@ -276,26 +300,10 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
     );
   }
 
-  String _categoryId(Transaction tx) => tx.customCategoryId == null
-      ? (tx.effectiveStandardCategoryId ?? 'uncategorized')
-      : 'custom:${tx.customCategoryId}';
-
-  String _categoryName(String id) {
-    if (id.startsWith('custom:')) {
-      return _customCategories[id.substring(7)]?.name ?? 'Custom category';
-    }
-    return _standardCategories[id]?.displayName ??
-        TransactionCategory.fromStandardCategoryId(id)?.displayName ??
-        'Uncategorized';
-  }
-
-  String _categoryEmoji(String id) => id.startsWith('custom:')
-      ? (_customCategories[id.substring(7)]?.emoji ?? '🏷️')
-      : (_standardCategories[id]?.emoji ?? '❓');
-
-  Color _categoryColor(String id) => id.startsWith('custom:')
-      ? Color(_customCategories[id.substring(7)]?.colorValue ?? Colors.grey.toARGB32())
-      : (_standardCategories[id]?.color ?? Colors.grey);
+  String _categoryId(Transaction tx) => tx.categoryId ?? '';
+  String _categoryName(String id) => _categories[id]?.name ?? 'Uncategorized';
+  String _categoryEmoji(String id) => _categories[id]?.emoji ?? '???';
+  Color _categoryColor(String id) => _categories[id]?.color ?? Colors.grey;
 
   String _fmt(double v) {
     if (v >= 100000) return '${(v / 100000).toStringAsFixed(2)}L';
@@ -304,7 +312,20 @@ class _CategoryBreakdownScreenState extends State<CategoryBreakdownScreen> {
   }
 
   String _fmtDate(DateTime d) {
-    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${d.day} ${m[d.month - 1]} ${d.year}';
   }
 }

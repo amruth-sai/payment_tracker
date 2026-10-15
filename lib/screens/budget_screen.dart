@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/budget.dart';
 import '../models/salary_cycle.dart';
-import '../models/standard_category.dart';
+import '../models/app_category.dart';
 import '../models/transaction.dart';
 import '../services/budget_service.dart';
 import '../services/local_storage_service.dart';
@@ -13,6 +13,8 @@ import '../utils/date_utils.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/transaction_detail_sheet.dart';
 import 'outside_budget_transactions_screen.dart';
+import 'categories_screen.dart';
+import '../utils/format_utils.dart';
 
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
@@ -23,7 +25,7 @@ class BudgetScreen extends StatefulWidget {
 
 class _BudgetScreenState extends State<BudgetScreen> {
   List<BudgetStatus> _statuses = [];
-  List<StandardCategory> _standardCategories = [];
+  List<AppCategory> _categories = [];
   List<Transaction> _outsideBudgetTransactions = [];
   bool _isLoading = true;
   double _monthlyIncome = 0;
@@ -73,12 +75,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final categories = await BudgetService.loadBudgetCategories();
 
     _monthlyIncome = double.tryParse(incomeStr ?? '') ?? 0;
-    _standardCategories = categories.values.toList();
+    _categories = categories.values.toList();
 
-    await _refreshStatuses(
-      useProviderTransactions: true,
-      refreshPeriods: true,
-    );
+    await _refreshStatuses(useProviderTransactions: true, refreshPeriods: true);
   }
 
   Future<void> _refreshStatuses({
@@ -96,6 +95,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       await _loadPeriods(baseTransactions: baseTransactions);
     }
 
+    _categories = (await LocalStorageService.getAllCategories());
     final activePeriod = _activePeriod;
     final statuses = await BudgetService.checkBudgets(
       transactions: baseTransactions,
@@ -105,8 +105,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final budgets = await LocalStorageService.getAllBudgets();
     final outside = BudgetService.outsideBudgetTransactions(
       transactions: baseTransactions,
-      budgetCategoryIds:
-          budgets.map((budget) => budget.standardCategoryId).toSet(),
+      budgetCategoryIds: budgets.map((budget) => budget.categoryId).toSet(),
       start: activePeriod.start,
       end: activePeriod.end,
     );
@@ -119,18 +118,18 @@ class _BudgetScreenState extends State<BudgetScreen> {
     });
   }
 
-  Map<String, StandardCategory> get _standardCategoriesById => {
-        for (final category in StandardCategory.defaultCategories)
-          category.id: category,
-        for (final category in _standardCategories) category.id: category,
-      };
+  Map<String, AppCategory> get _categoriesById => {
+    for (final category in _categories) category.id: category,
+  };
 
-  List<StandardCategory> get _budgetableCategories {
-    final categories = _standardCategoriesById.values
-        .where((category) => category.isActive)
-        .where(BudgetService.isBudgetableCategory)
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  List<AppCategory> get _budgetableCategories {
+    final categories =
+        _categoriesById.values
+            .where(BudgetService.isBudgetableCategory)
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
     return categories;
   }
 
@@ -234,8 +233,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   avatar: period.isCurrent
                       ? const Icon(Icons.circle, size: 8, color: Colors.green)
                       : null,
-                  label:
-                      Text(period.label, style: const TextStyle(fontSize: 12)),
+                  label: Text(
+                    period.label,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   selected: _selectedPeriod?.id == period.id,
                   onSelected: (_) => _selectPeriod(period),
                 ),
@@ -259,7 +260,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
     if (_hasSalaryCycles) {
       _periods = cycles.map(_periodFromSalaryCycle).toList();
     } else {
-      final transactions = baseTransactions ??
+      final transactions =
+          baseTransactions ??
           await LocalStorageService.getTrackedTransactions();
       _periods = _buildMonthlyPeriods(transactions);
     }
@@ -317,7 +319,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   _BudgetPeriod _periodFromSalaryCycle(SalaryCycle cycle) {
-    final end = cycle.endDate ?? DateTime.now();
+    final end =
+        cycle.endDate?.subtract(const Duration(milliseconds: 1)) ??
+        DateTime.now();
     return _BudgetPeriod(
       id: 'cycle_${cycle.id}',
       label: cycle.cycleLabel,
@@ -379,7 +383,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Add budgets using your standard categories or use suggestions based on your spending.',
+            'Add budgets using your categories or use suggestions based on your spending.',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -396,7 +400,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   Widget _buildOutsideBudgetsCard() {
     final transactions = _outsideBudgetTransactions;
     final total = transactions.fold<double>(0, (sum, tx) => sum + tx.amount);
-    final categoriesById = _standardCategoriesById;
+    final categoriesById = _categoriesById;
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Padding(
@@ -404,13 +408,17 @@ class _BudgetScreenState extends State<BudgetScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Outside your budgets',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Outside your budgets',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 4),
-            Text(transactions.isEmpty
-                ? 'No uncovered spending in ${_activePeriod.label}.'
-                : '${transactions.length} spending transactions · '
-                    '\u20B9${_fmt(total)} in ${_activePeriod.label}'),
+            Text(
+              transactions.isEmpty
+                  ? 'No uncovered spending in ${_activePeriod.label}.'
+                  : '${transactions.length} spending transactions · '
+                        '\u20B9${_fmt(total)} in ${_activePeriod.label}',
+            ),
             if (transactions.isNotEmpty) ...[
               const SizedBox(height: 8),
               ...transactions.take(3).map((tx) {
@@ -419,11 +427,16 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
-                  title: Text(tx.displayName,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(categoryId == 'uncategorized'
-                      ? 'Needs category'
-                      : category?.displayName ?? 'Category not found'),
+                  title: Text(
+                    tx.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    categoryId == null
+                        ? 'Needs category'
+                        : category?.name ?? 'Category not found',
+                  ),
                   trailing: Text('\u20B9${_fmt(tx.amount)}'),
                 );
               }),
@@ -459,9 +472,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final color = status.isOverBudget
         ? Colors.red
         : status.isWarning
-            ? Colors.orange
-            : Colors.green;
-    final category = status.standardCategory;
+        ? Colors.orange
+        : Colors.green;
+    final category = status.category;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -482,7 +495,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          category.displayName,
+                          category.name,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         if (status.budget.isSuggested)
@@ -515,7 +528,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         _showEditBudgetDialog(status.budget);
                       } else if (value == 'delete') {
                         await LocalStorageService.deleteBudget(
-                            status.budget.id);
+                          status.budget.id,
+                        );
                         await _loadData();
                       }
                     },
@@ -523,8 +537,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       const PopupMenuItem(value: 'edit', child: Text('Edit')),
                       const PopupMenuItem(
                         value: 'delete',
-                        child:
-                            Text('Delete', style: TextStyle(color: Colors.red)),
+                        child: Text(
+                          'Delete',
+                          style: TextStyle(color: Colors.red),
+                        ),
                       ),
                     ],
                   ),
@@ -625,7 +641,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       transactions: transactions,
       monthlyIncome: _monthlyIncome,
     );
-    final categoriesById = _standardCategoriesById;
+    final categoriesById = _categoriesById;
 
     if (!mounted) return;
 
@@ -643,26 +659,27 @@ class _BudgetScreenState extends State<BudgetScreen> {
           width: double.maxFinite,
           child: ListView(
             shrinkWrap: true,
-            children: suggestions.entries
-                .where((entry) => entry.value > 0)
-                .map((entry) {
-              final category = categoriesById[entry.key];
-              if (category == null ||
-                  !category.isActive ||
-                  !BudgetService.isBudgetableCategory(category)) {
-                return const SizedBox.shrink();
-              }
-              return ListTile(
-                leading:
-                    Text(category.emoji, style: const TextStyle(fontSize: 20)),
-                title: Text(category.displayName),
-                trailing: Text(
-                  '\u20B9${_fmt(entry.value)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                dense: true,
-              );
-            }).toList(),
+            children: suggestions.entries.where((entry) => entry.value > 0).map(
+              (entry) {
+                final category = categoriesById[entry.key];
+                if (category == null ||
+                    !BudgetService.isBudgetableCategory(category)) {
+                  return const SizedBox.shrink();
+                }
+                return ListTile(
+                  leading: Text(
+                    category.emoji,
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                  title: Text(category.name),
+                  trailing: Text(
+                    '\u20B9${_fmt(entry.value)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  dense: true,
+                );
+              },
+            ).toList(),
           ),
         ),
         actions: [
@@ -683,15 +700,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
       for (final entry in suggestions.entries) {
         if (entry.value <= 0) continue;
         final category = categoriesById[entry.key];
-        if (category == null ||
-            !category.isActive ||
-            !BudgetService.isBudgetableCategory(category)) {
+        if (category == null || !BudgetService.isBudgetableCategory(category)) {
           continue;
         }
         await LocalStorageService.saveBudget(
           Budget(
             id: 'budget_${entry.key}',
-            standardCategoryId: entry.key,
+            categoryId: entry.key,
             monthlyLimit: entry.value,
             isSuggested: true,
           ),
@@ -710,23 +725,45 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _showBudgetFormDialog(Budget? existing) async {
-    if (_budgetableCategories.isEmpty) return;
+    if (_budgetableCategories.isEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+      );
+      if (!mounted) return;
+      await _loadData();
+      if (!mounted || _budgetableCategories.isEmpty) return;
+    }
 
-    final availableCategories = [..._budgetableCategories];
+    final budgeted = _statuses.map((s) => s.budget.categoryId).toSet();
+    final availableCategories = _budgetableCategories
+        .where((c) => c.id == existing?.categoryId || !budgeted.contains(c.id))
+        .toList();
+    if (availableCategories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Every category already has a budget. Edit a budget or create a category.',
+          ),
+        ),
+      );
+      return;
+    }
     if (existing != null) {
-      final existingCategory =
-          _standardCategoriesById[existing.standardCategoryId];
+      final existingCategory = _categoriesById[existing.categoryId];
       if (existingCategory != null &&
           !availableCategories.any((c) => c.id == existingCategory.id)) {
         availableCategories.add(existingCategory);
-        availableCategories.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        availableCategories.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
       }
     }
 
     String selectedCategoryId =
-        existing?.standardCategoryId ?? availableCategories.first.id;
+        existing?.categoryId ?? availableCategories.first.id;
     final limitController = TextEditingController(
-      text: existing?.monthlyLimit.toStringAsFixed(0) ?? '',
+      text: existing?.monthlyLimit.toStringAsFixed(2) ?? '',
     );
 
     final result = await showDialog<Budget>(
@@ -744,8 +781,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     .map(
                       (category) => DropdownMenuItem(
                         value: category.id,
-                        child:
-                            Text('${category.emoji} ${category.displayName}'),
+                        child: Text('${category.emoji} ${category.name}'),
                       ),
                     )
                     .toList(),
@@ -775,15 +811,15 @@ class _BudgetScreenState extends State<BudgetScreen> {
             FilledButton(
               onPressed: () {
                 final limit = double.tryParse(limitController.text);
-                if (limit == null || limit <= 0) return;
+                if (limit == null || !limit.isFinite || limit < 0.01) return;
                 Navigator.pop(
                   context,
                   Budget(
                     id: existing?.id ?? 'budget_$selectedCategoryId',
-                    standardCategoryId: selectedCategoryId,
+                    categoryId: selectedCategoryId,
                     monthlyLimit: limit,
                     isSuggested: existing?.isSuggested ?? false,
-                    createdAt: existing?.createdAt,
+                    createdAt: existing?.createdAt ?? DateTime.now(),
                   ),
                 );
               },
@@ -794,17 +830,26 @@ class _BudgetScreenState extends State<BudgetScreen> {
       ),
     );
 
-    if (result != null) {
-      await LocalStorageService.saveBudget(result);
-      await _loadData();
+    limitController.dispose();
+    if (result != null && mounted) {
+      try {
+        await LocalStorageService.saveBudget(result);
+        if (mounted) await _loadData();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not save budget. Each category can have one budget.',
+              ),
+            ),
+          );
+        }
+      }
     }
   }
 
-  String _fmt(double value) {
-    if (value >= 100000) return '${(value / 100000).toStringAsFixed(2)}L';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(2)}K';
-    return value.toStringAsFixed(0);
-  }
+  String _fmt(double value) => FormatUtils.formatAmount(value);
 }
 
 class _BudgetPeriod {
@@ -845,8 +890,8 @@ class _BudgetCategoryTransactionsSheetState
   bool _isLoading = true;
   SmsService? _smsService;
 
-  StandardCategory get _category => widget.status.standardCategory;
-  String get _categoryId => widget.status.budget.standardCategoryId;
+  AppCategory get _category => widget.status.category;
+  String get _categoryId => widget.status.budget.categoryId;
 
   @override
   void initState() {
@@ -877,8 +922,9 @@ class _BudgetCategoryTransactionsSheetState
     _refreshTransactions(useProviderTransactions: true);
   }
 
-  Future<void> _refreshTransactions(
-      {required bool useProviderTransactions}) async {
+  Future<void> _refreshTransactions({
+    required bool useProviderTransactions,
+  }) async {
     final providerTransactions = useProviderTransactions
         ? (_smsService?.transactions ?? const <Transaction>[])
         : const <Transaction>[];
@@ -896,27 +942,24 @@ class _BudgetCategoryTransactionsSheetState
   }
 
   List<Transaction> _filterIncludedTransactions(
-      List<Transaction> transactions) {
+    List<Transaction> transactions,
+  ) {
     final start = widget.period.start;
     final end = widget.period.end;
     return transactions
         .where((tx) => !tx.date.isBefore(start) && !tx.date.isAfter(end))
         .where(BudgetService.isBudgetExpense)
         .where((tx) {
-      final categoryId = BudgetService.categoryIdForTransaction(tx);
-      return categoryId == _categoryId;
-    }).toList()
+          final categoryId = BudgetService.categoryIdForTransaction(tx);
+          return categoryId == _categoryId;
+        })
+        .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  double get _totalSpent =>
-      _transactions.fold(0.0, (sum, tx) => sum + tx.amount);
+  double get _totalSpent => _transactions.totalAmount;
 
-  String _fmt(double value) {
-    if (value >= 100000) return '${(value / 100000).toStringAsFixed(2)}L';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(2)}K';
-    return value.toStringAsFixed(0);
-  }
+  String _fmt(double value) => FormatUtils.formatAmount(value);
 
   @override
   Widget build(BuildContext context) {
@@ -958,7 +1001,7 @@ class _BudgetCategoryTransactionsSheetState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _category.displayName,
+                          _category.name,
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -1010,8 +1053,9 @@ class _BudgetCategoryTransactionsSheetState
                     Expanded(
                       child: _SummaryStat(
                         label: 'Spent',
-                        value:
-                            _isLoading ? '...' : '\u20B9${_fmt(_totalSpent)}',
+                        value: _isLoading
+                            ? '...'
+                            : '\u20B9${_fmt(_totalSpent)}',
                       ),
                     ),
                     Expanded(
@@ -1030,47 +1074,48 @@ class _BudgetCategoryTransactionsSheetState
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _transactions.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.receipt_long_outlined,
-                                  size: 48,
-                                  color: theme.colorScheme.outline,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'No transactions counted for this category in this period.',
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 48,
+                              color: theme.colorScheme.outline,
                             ),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.only(top: 8, bottom: 24),
-                          itemCount: _transactions.length,
-                          itemBuilder: (context, index) {
-                            final tx = _transactions[index];
-                            return TransactionCard(
-                              tx: tx,
-                              accountDisplayName:
-                                  _smsService?.getAccountDisplayName(
-                                      tx.accountId, tx.accountLast4),
-                              standardCategoryLabel: _category.displayName,
-                              standardCategoryColor: _category.color,
-                              onTap: () =>
-                                  TransactionDetailSheet.show(context, tx),
-                            );
-                          },
+                            const SizedBox(height: 12),
+                            Text(
+                              'No transactions counted for this category in this period.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.only(top: 8, bottom: 24),
+                      itemCount: _transactions.length,
+                      itemBuilder: (context, index) {
+                        final tx = _transactions[index];
+                        return TransactionCard(
+                          tx: tx,
+                          accountDisplayName: _smsService
+                              ?.getAccountDisplayName(
+                                tx.accountId,
+                                tx.accountLast4,
+                              ),
+                          categoryLabel: _category.name,
+                          categoryColor: _category.color,
+                          onTap: () => TransactionDetailSheet.show(context, tx),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -1083,10 +1128,7 @@ class _SummaryStat extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryStat({
-    required this.label,
-    required this.value,
-  });
+  const _SummaryStat({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {

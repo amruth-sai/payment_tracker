@@ -1,6 +1,7 @@
 // lib/services/transfer_service.dart
 
 import 'dart:math';
+import '../utils/money.dart';
 import 'package:uuid/uuid.dart';
 import '../models/transaction.dart';
 import '../models/merged_transfer.dart';
@@ -12,7 +13,9 @@ class TransferService {
   static const _uuid = Uuid();
 
   /// Auto-detect potential transfer pairs from a list of transactions
-  static List<TransferPair> detectPotentialTransfers(List<Transaction> transactions) {
+  static List<TransferPair> detectPotentialTransfers(
+    List<Transaction> transactions,
+  ) {
     final potentialPairs = <TransferPair>[];
 
     // Skip if we have too few transactions to make meaningful pairs
@@ -23,13 +26,18 @@ class TransferService {
 
     for (final transaction in transactions) {
       // Skip already linked transactions
-      if (transaction.isPartOfTransfer) continue;
+      if (transaction.isPartOfTransfer ||
+          transaction.isIgnored ||
+          transaction.isSalary) {
+        continue;
+      }
 
       // Create compound key: amount + date (day level for efficiency)
-      final dateKey = '${transaction.date.year}-${transaction.date.month}-${transaction.date.day}';
-      final amountDateKey = '${transaction.amount}_$dateKey';
+      final amountDateKey = Money.toPaise(transaction.amount).toString();
 
-      transactionsByAmountAndDate.putIfAbsent(amountDateKey, () => []).add(transaction);
+      transactionsByAmountAndDate
+          .putIfAbsent(amountDateKey, () => [])
+          .add(transaction);
     }
 
     // Process each amount-date group
@@ -39,16 +47,13 @@ class TransferService {
       // Need at least 2 transactions to form a pair
       if (transactionsWithAmountDate.length < 2) continue;
 
-      // Early termination for large groups (performance optimization)
-      if (transactionsWithAmountDate.length > 20) {
-        // For very large groups, only process the most recent transactions
-        transactionsWithAmountDate.sort((a, b) => b.date.compareTo(a.date));
-        transactionsWithAmountDate.removeRange(20, transactionsWithAmountDate.length);
-      }
-
       // Find debit/credit pairs within this group
-      final debits = transactionsWithAmountDate.where((t) => t.isDebit).toList();
-      final credits = transactionsWithAmountDate.where((t) => t.isCredit).toList();
+      final debits = transactionsWithAmountDate
+          .where((t) => t.isDebit)
+          .toList();
+      final credits = transactionsWithAmountDate
+          .where((t) => t.isCredit)
+          .toList();
 
       // Optimize: process high-confidence matches first
       for (final debit in debits) {
@@ -85,15 +90,25 @@ class TransferService {
   }
 
   /// Evaluate if two transactions could be a transfer pair
-  static TransferPair? _evaluateTransferPair(Transaction debit, Transaction credit) {
+  static TransferPair? _evaluateTransferPair(
+    Transaction debit,
+    Transaction credit,
+  ) {
     // Must be different transaction types
-    if (debit.type == credit.type) return null;
+    if (!debit.isDebit || !credit.isCredit) return null;
+    if (debit.accountId != null && debit.accountId == credit.accountId) {
+      return null;
+    }
+    if (debit.date.difference(credit.date).abs() > const Duration(days: 1)) {
+      return null;
+    }
 
     // Must have same amount
     if (debit.amount != credit.amount) return null;
 
     // Skip if they have the same account (not a transfer between accounts)
-    if (debit.sender == credit.sender && debit.accountLast4 == credit.accountLast4) {
+    if (debit.sender == credit.sender &&
+        debit.accountLast4 == credit.accountLast4) {
       return null;
     }
 
@@ -119,7 +134,9 @@ class TransferService {
     }
 
     // Account information matching
-    if (debit.accountId != null && credit.accountId != null && debit.accountId != credit.accountId) {
+    if (debit.accountId != null &&
+        credit.accountId != null &&
+        debit.accountId != credit.accountId) {
       confidence += 0.3;
       reasons.add('Different accounts');
     }
@@ -135,12 +152,16 @@ class TransferService {
     }
 
     // Transfer category detection
-    final debitHasTransferKeyword = TransferConstants.transferKeywords.any((keyword) =>
-        debit.rawMessage.toLowerCase().contains(keyword) ||
-        (debit.merchant?.toLowerCase().contains(keyword) ?? false));
-    final creditHasTransferKeyword = TransferConstants.transferKeywords.any((keyword) =>
-        credit.rawMessage.toLowerCase().contains(keyword) ||
-        (credit.merchant?.toLowerCase().contains(keyword) ?? false));
+    final debitHasTransferKeyword = TransferConstants.transferKeywords.any(
+      (keyword) =>
+          debit.rawMessage.toLowerCase().contains(keyword) ||
+          (debit.merchant?.toLowerCase().contains(keyword) ?? false),
+    );
+    final creditHasTransferKeyword = TransferConstants.transferKeywords.any(
+      (keyword) =>
+          credit.rawMessage.toLowerCase().contains(keyword) ||
+          (credit.merchant?.toLowerCase().contains(keyword) ?? false),
+    );
 
     if (debitHasTransferKeyword || creditHasTransferKeyword) {
       confidence += 0.2;
@@ -168,9 +189,23 @@ class TransferService {
   }
 
   /// Merge two transactions as a transfer pair
-  static Future<void> mergeAsTransfer(Transaction debit, Transaction credit) async {
+  static Future<void> mergeAsTransfer(
+    Transaction debit,
+    Transaction credit,
+  ) async {
     final transferGroupId = _uuid.v4();
 
+    if (!debit.isDebit ||
+        !credit.isCredit ||
+        debit.isIgnored ||
+        credit.isIgnored ||
+        debit.isSalary ||
+        credit.isSalary ||
+        (debit.accountId != null && debit.accountId == credit.accountId)) {
+      throw ArgumentError(
+        'A transfer needs one debit and one credit in different accounts.',
+      );
+    }
     // Validate inputs before processing
     if (debit.amount != credit.amount) {
       throw Exception('Cannot merge transactions with different amounts');
@@ -179,7 +214,9 @@ class TransferService {
       throw Exception('Cannot merge a transaction with itself');
     }
     if (debit.isPartOfTransfer || credit.isPartOfTransfer) {
-      throw Exception('Cannot merge transactions that are already part of a transfer');
+      throw Exception(
+        'Cannot merge transactions that are already part of a transfer',
+      );
     }
 
     // Update the debit transaction
@@ -198,7 +235,10 @@ class TransferService {
 
     try {
       // Save both transactions atomically
-      await LocalStorageService.updateTransactionsAtomic([updatedDebit, updatedCredit]);
+      await LocalStorageService.updateTransactionsAtomic([
+        updatedDebit,
+        updatedCredit,
+      ]);
     } catch (e) {
       // If the atomic update fails, ensure data integrity by not having partial updates
       throw Exception('Failed to merge transactions: $e');
@@ -255,25 +295,32 @@ class TransferService {
   }
 
   /// Get all merged transfers from a list of transactions
-  static List<MergedTransfer> getMergedTransfers(List<Transaction> transactions) {
+  static List<MergedTransfer> getMergedTransfers(
+    List<Transaction> transactions,
+  ) {
     return transactions.getMergedTransfers();
   }
 
   /// Get standalone transactions (not part of transfers) from a list
-  static List<Transaction> getStandaloneTransactions(List<Transaction> transactions) {
+  static List<Transaction> getStandaloneTransactions(
+    List<Transaction> transactions,
+  ) {
     return transactions.getStandaloneTransactions();
   }
 
   /// Verify data integrity of transfer system and report issues
-  static TransferIntegrityReport verifyDataIntegrity(List<Transaction> transactions) {
+  static TransferIntegrityReport verifyDataIntegrity(
+    List<Transaction> transactions,
+  ) {
     final report = TransferIntegrityReport();
     final transferGroups = <String, List<Transaction>>{};
 
     // Group transactions by transfer ID
     for (final transaction in transactions) {
       if (transaction.transferGroupId != null) {
-        transferGroups.putIfAbsent(transaction.transferGroupId!, () => [])
-          .add(transaction);
+        transferGroups
+            .putIfAbsent(transaction.transferGroupId!, () => [])
+            .add(transaction);
       }
     }
 
@@ -284,59 +331,71 @@ class TransferService {
 
       if (group.length == 1) {
         // Orphaned transaction - has transfer group but no partner
-        report.orphanedTransactions.add(OrphanedTransfer(
-          groupId: groupId,
-          transaction: group[0],
-          issue: 'Single transaction in transfer group (missing partner)',
-        ));
+        report.orphanedTransactions.add(
+          OrphanedTransfer(
+            groupId: groupId,
+            transaction: group[0],
+            issue: 'Single transaction in transfer group (missing partner)',
+          ),
+        );
       } else if (group.length == 2) {
         final t1 = group[0];
         final t2 = group[1];
 
         // Validate amounts match
         if (t1.amount != t2.amount) {
-          report.invalidTransfers.add(InvalidTransfer(
-            groupId: groupId,
-            transactions: group,
-            issue: 'Amount mismatch: ${t1.amount} != ${t2.amount}',
-          ));
+          report.invalidTransfers.add(
+            InvalidTransfer(
+              groupId: groupId,
+              transactions: group,
+              issue: 'Amount mismatch: ${t1.amount} != ${t2.amount}',
+            ),
+          );
         }
 
         // Validate transaction types
-        bool hasDebitCredit = (t1.isDebit && t2.isCredit) || (t1.isCredit && t2.isDebit);
+        bool hasDebitCredit =
+            (t1.isDebit && t2.isCredit) || (t1.isCredit && t2.isDebit);
         if (!hasDebitCredit) {
-          report.invalidTransfers.add(InvalidTransfer(
-            groupId: groupId,
-            transactions: group,
-            issue: 'Invalid transaction types: ${t1.type.name} & ${t2.type.name}',
-          ));
+          report.invalidTransfers.add(
+            InvalidTransfer(
+              groupId: groupId,
+              transactions: group,
+              issue:
+                  'Invalid transaction types: ${t1.type.name} & ${t2.type.name}',
+            ),
+          );
         }
 
         // Validate transfer flags
-        bool hasSourceDest = (t1.isTransferSource || t2.isTransferSource) &&
-                            (t1.isTransferDestination || t2.isTransferDestination);
+        bool hasSourceDest =
+            (t1.isTransferSource || t2.isTransferSource) &&
+            (t1.isTransferDestination || t2.isTransferDestination);
         if (!hasSourceDest) {
-          report.validationWarnings.add(ValidationWarning(
-            groupId: groupId,
-            issue: 'Missing transfer source/destination flags',
-          ));
+          report.validationWarnings.add(
+            ValidationWarning(
+              groupId: groupId,
+              issue: 'Missing transfer source/destination flags',
+            ),
+          );
         }
 
         // Validate partner IDs
         if (t1.transferPartnerId != t2.id || t2.transferPartnerId != t1.id) {
-          report.validationWarnings.add(ValidationWarning(
-            groupId: groupId,
-            issue: 'Partner ID mismatch',
-          ));
+          report.validationWarnings.add(
+            ValidationWarning(groupId: groupId, issue: 'Partner ID mismatch'),
+          );
         }
-
       } else {
         // Multiple transactions with same group ID
-        report.corruptedGroups.add(CorruptedTransferGroup(
-          groupId: groupId,
-          transactions: group,
-          issue: 'Multiple transactions (${group.length}) with same transfer group ID',
-        ));
+        report.corruptedGroups.add(
+          CorruptedTransferGroup(
+            groupId: groupId,
+            transactions: group,
+            issue:
+                'Multiple transactions (${group.length}) with same transfer group ID',
+          ),
+        );
       }
     }
 
@@ -344,7 +403,9 @@ class TransferService {
   }
 
   /// Attempt to fix data integrity issues
-  static Future<TransferCleanupResult> cleanupDataIntegrity(List<Transaction> transactions) async {
+  static Future<TransferCleanupResult> cleanupDataIntegrity(
+    List<Transaction> transactions,
+  ) async {
     final result = TransferCleanupResult();
     final report = verifyDataIntegrity(transactions);
 
@@ -386,8 +447,8 @@ class TransferService {
         result.wasSuccessful = true; // No issues to fix
       }
 
-      result.unfixableIssues = report.invalidTransfers.length + report.validationWarnings.length;
-
+      result.unfixableIssues =
+          report.invalidTransfers.length + report.validationWarnings.length;
     } catch (e) {
       result.wasSuccessful = false;
       result.errorMessage = 'Failed to apply fixes: $e';
@@ -416,7 +477,9 @@ class TransferPair {
 
   /// Get a display description of why this is a potential transfer
   String get description {
-    final timeDiff = debitTransaction.date.difference(creditTransaction.date).abs();
+    final timeDiff = debitTransaction.date
+        .difference(creditTransaction.date)
+        .abs();
     return 'Same amount (₹${debitTransaction.amount.toStringAsFixed(2)}) • ${timeDiff.inMinutes <= 60 ? '${timeDiff.inMinutes}m apart' : '${timeDiff.inHours}h apart'}';
   }
 
@@ -424,7 +487,8 @@ class TransferPair {
   double get amount => debitTransaction.amount;
 
   /// Get the earlier of the two transaction dates
-  DateTime get earliestDate => debitTransaction.date.isBefore(creditTransaction.date)
+  DateTime get earliestDate =>
+      debitTransaction.date.isBefore(creditTransaction.date)
       ? debitTransaction.date
       : creditTransaction.date;
 }
@@ -436,24 +500,34 @@ class TransferIntegrityReport {
   final List<CorruptedTransferGroup> corruptedGroups = [];
   final List<ValidationWarning> validationWarnings = [];
 
-  bool get hasIssues => orphanedTransactions.isNotEmpty ||
-                       invalidTransfers.isNotEmpty ||
-                       corruptedGroups.isNotEmpty ||
-                       validationWarnings.isNotEmpty;
+  bool get hasIssues =>
+      orphanedTransactions.isNotEmpty ||
+      invalidTransfers.isNotEmpty ||
+      corruptedGroups.isNotEmpty ||
+      validationWarnings.isNotEmpty;
 
-  int get totalIssues => orphanedTransactions.length +
-                        invalidTransfers.length +
-                        corruptedGroups.length +
-                        validationWarnings.length;
+  int get totalIssues =>
+      orphanedTransactions.length +
+      invalidTransfers.length +
+      corruptedGroups.length +
+      validationWarnings.length;
 
   String get summary {
     if (!hasIssues) return 'No data integrity issues found';
 
     final parts = <String>[];
-    if (orphanedTransactions.isNotEmpty) parts.add('${orphanedTransactions.length} orphaned');
-    if (invalidTransfers.isNotEmpty) parts.add('${invalidTransfers.length} invalid');
-    if (corruptedGroups.isNotEmpty) parts.add('${corruptedGroups.length} corrupted groups');
-    if (validationWarnings.isNotEmpty) parts.add('${validationWarnings.length} warnings');
+    if (orphanedTransactions.isNotEmpty) {
+      parts.add('${orphanedTransactions.length} orphaned');
+    }
+    if (invalidTransfers.isNotEmpty) {
+      parts.add('${invalidTransfers.length} invalid');
+    }
+    if (corruptedGroups.isNotEmpty) {
+      parts.add('${corruptedGroups.length} corrupted groups');
+    }
+    if (validationWarnings.isNotEmpty) {
+      parts.add('${validationWarnings.length} warnings');
+    }
 
     return 'Found ${parts.join(', ')} transfer issues';
   }
@@ -499,10 +573,7 @@ class ValidationWarning {
   final String groupId;
   final String issue;
 
-  ValidationWarning({
-    required this.groupId,
-    required this.issue,
-  });
+  ValidationWarning({required this.groupId, required this.issue});
 }
 
 class TransferCleanupResult {
@@ -522,9 +593,13 @@ class TransferCleanupResult {
     }
 
     final parts = <String>[];
-    if (fixedOrphans > 0) parts.add('Fixed $fixedOrphans orphaned transactions');
+    if (fixedOrphans > 0) {
+      parts.add('Fixed $fixedOrphans orphaned transactions');
+    }
     if (fixedCorrupted > 0) parts.add('Fixed $fixedCorrupted corrupted groups');
-    if (unfixableIssues > 0) parts.add('$unfixableIssues issues require manual review');
+    if (unfixableIssues > 0) {
+      parts.add('$unfixableIssues issues require manual review');
+    }
 
     return parts.join(', ');
   }

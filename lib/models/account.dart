@@ -60,10 +60,7 @@ class Account {
     return Account(
       id: map['id'] as String,
       name: map['name'] as String,
-      type: AccountType.values.firstWhere(
-        (t) => t.name == map['type'],
-        orElse: () => AccountType.bankAccount,
-      ),
+      type: AccountType.values.firstWhere((t) => t.name == map['type']),
       last4Digits: map['last4_digits'] as String?,
       bankName: map['bank_name'] as String?,
       cardNetwork: map['card_network'] as String?,

@@ -41,8 +41,11 @@ class _IgnoredTransactionsScreenState extends State<IgnoredTransactionsScreen> {
   Future<void> _restoreTransaction(Transaction tx) async {
     if (tx.transferPartnerId != null) {
       final all = await LocalStorageService.getAllTransactions();
-      final partners = all.where((item) => item.id == tx.transferPartnerId).toList();
-      if (partners.isNotEmpty && partners.first.isIgnored &&
+      final partners = all
+          .where((item) => item.id == tx.transferPartnerId)
+          .toList();
+      if (partners.isNotEmpty &&
+          partners.first.isIgnored &&
           partners.first.transferGroupId == tx.transferGroupId) {
         await LocalStorageService.updateTransactionsAtomic([
           tx.copyWith(isIgnored: false),
@@ -152,7 +155,10 @@ class _IgnoredTransactionsScreenState extends State<IgnoredTransactionsScreen> {
                         tx: tx,
                         accountDisplayName: context
                             .read<SmsService>()
-                            .getAccountDisplayName(tx.accountId, tx.accountLast4),
+                            .getAccountDisplayName(
+                              tx.accountId,
+                              tx.accountLast4,
+                            ),
                         onTap: () => TransactionDetailSheet.show(
                           context,
                           tx,

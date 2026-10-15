@@ -4,7 +4,6 @@ import '../models/transaction.dart';
 import '../models/transaction_review.dart';
 import '../services/sender_discovery_service.dart';
 import '../services/local_storage_service.dart';
-import '../services/category_service.dart';
 
 class SmsParser {
   // Cache for sender mappings to avoid database lookups on every parse
@@ -12,51 +11,17 @@ class SmsParser {
   static DateTime? _cacheLastUpdated;
   static const Duration _cacheValidDuration = Duration(minutes: 10);
 
-  // User's specific bank and credit card sender mappings (kept for fallback)
-  static const Map<String, List<String>> _userBankMapping = {
-    'HDFC': [
-      'HDFCBK', 'DM-HDFCBK', 'HDFC', 'HDFCBANK', 'HDFCLT',
-      'HDFCCC', 'HDFCCR', 'HDFCDC', 'HDFCNET', 'HDFCALERT',
-    ],
-    'ICICI': [
-      'ICICIB', 'DM-ICICIB', 'ICICI', 'ICICIBANK', 'ICICIBK',
-      'ICICIMB', 'ICICINET', 'ICICIALERT',
-    ],
-    'AIRTEL': [
-      'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK', 'AIRTELPAY',
-      'AIRTELBANK', 'AIRTELBK', 'ARTLBK', 'AIRBKS',
-    ],
-    'JIO PAY': [
-      'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', 'JIOBANK',
-      'JIOPAYMENTS', 'JIOFINANCE', 'JIOPBS', 'JPBL',
-    ],
-    'SBI': [
-      'SBIINB', 'SBI', 'SBIBANK', 'SBIMB', 'SBINET', 'SBIALERT',
-      'SBICRD', 'SBICC', 'SBIDC',
-    ],
-  };
-
-  // User's specific credit card mappings (kept for fallback)
-  static const Map<String, List<String>> _userCreditCardMapping = {
-    'HDFC1': ['HDFCCC', 'HDFCCR1', 'HDFCCARD1'],
-    'HDFC2': ['HDFCCR2', 'HDFCCARD2', 'HDFCDC2'],
-    'ICICI Credit': ['ICICCC', 'ICICCARD', 'ICICIMB', 'ICICINET'],
-    'OneCard': ['ONECARD', 'ONECRD', 'BOBONE', 'BOBSMS', 'BOBBNK'],
-    'SBI Credit': ['SBICRD', 'SBICC', 'SBICARD'],
-  };
-
-  // Known bank/payment sender IDs (keeping for backward compatibility)
+  // Recognized sender patterns used to identify financial messages.
   static const _knownSenders = [
     // Traditional Banks
     'HDFCBK', 'SBIINB', 'ICICIB', 'AXISBK', 'KOTAKB', 'PNBSMS',
     'BOIIND', 'CANBNK', 'UNIONB', 'INDUSB', 'YESBK', 'IDBIBK',
     'HSBC', 'SCBNK', 'CITIBK', 'RBLBNK', 'FEDRAL',
     'BOBSMS', 'BOBONE', 'BOBBNK', // Bank of Baroda / OneCard
-
     // Telecom & Digital Banks
     'AIRTEL', 'ARTLPY', 'ATBANK', 'AIRBNK', 'AIRBKS', // Airtel Payments Bank
-    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', 'JIOPBS', 'JPBL', // Jio Payments Bank / Jio Finance
-
+    'JIOPAY', 'JIOMNY', 'JIOFIN', 'JIOBNK', 'JIOPBS',
+    'JPBL', // Jio Payments Bank / Jio Finance
     // UPI & Wallets
     'PAYTM', 'GPAY', 'PHONEPE', 'AMAZONPAY', 'MOBIKWIK',
     'BHIMUPI', 'UPIPAY',
@@ -65,12 +30,11 @@ class SmsParser {
     'CREDCLUB', 'SLICE', 'JUPITER', 'FININ', 'FIAPP',
     'NIYOBNK', 'OPENBNK', 'RAZORPY',
     'ONECARD', 'ONECRD', // OneCard
-
     // Others
     'ATMMSG', 'TXNALRT', 'ALERTS',
   ];
 
-  // Credit card issuers - transactions from these are typically debits (spending)
+  // Recognized card issuers identify the payment channel, never the direction.
   static const _creditCardSenders = [
     'ONECARD', 'ONECRD', 'BOBONE', // OneCard (Bank of Baroda)
     'SLICE', 'CREDCLUB',
@@ -79,7 +43,9 @@ class SmsParser {
   static bool isBankSms(String sender) {
     final s = sender.toUpperCase();
     return _knownSenders.any((k) => s.contains(k)) ||
-        RegExp(r'^[A-Z]{2}-[A-Z]{5,6}(?:-[A-Z])?$').hasMatch(sender); // AD-AIRBNK-S, DM-HDFCBK, JD-JIOPBS-S format
+        RegExp(
+          r'^[A-Z]{2}-[A-Z]{5,6}(?:-[A-Z])?$',
+        ).hasMatch(sender); // AD-AIRBNK-S, DM-HDFCBK, JD-JIOPBS-S format
   }
 
   /// Payment alerts from unfamiliar senders can still enter review.
@@ -107,6 +73,7 @@ class SmsParser {
   }
 
   static String skipReason(String body, String sender) {
+    if (isNonTransaction(body)) return 'not_completed';
     if (!isLikelyPaymentMessage(sender, body)) return 'sender_not_recognized';
     if (!hasAmountIndicator(body)) return 'no_amount_indicator';
     if (_extractAmount(body) == null) return 'amount_not_found';
@@ -126,7 +93,8 @@ class SmsParser {
 
     // Load fresh mappings from database
     try {
-      final accountsWithSenders = await SenderDiscoveryService.getAccountsWithSenders();
+      final accountsWithSenders =
+          await SenderDiscoveryService.getAccountsWithSenders();
       final mappings = <String, String>{};
 
       for (final accountWithSenders in accountsWithSenders) {
@@ -140,7 +108,7 @@ class SmsParser {
       _cacheLastUpdated = now;
       return mappings;
     } catch (e) {
-      // If database access fails, return empty map (will fall back to hardcoded mappings)
+      // An unmapped sender keeps its original normalized name.
       return {};
     }
   }
@@ -151,80 +119,21 @@ class SmsParser {
     _cacheLastUpdated = null;
   }
 
-  /// Groups sender by mapping to user's specific bank/credit card names
-  /// Now uses dynamic database mappings with hardcoded fallback
+  /// Use only accounts explicitly mapped by the user.
   static Future<String> getUnifiedSenderName(String rawSender) async {
-    final cleanedSender = _cleanSender(rawSender).toUpperCase();
-
-    // Try dynamic mappings first
-    final dynamicMappings = await _loadSenderMappings();
-    if (dynamicMappings.containsKey(cleanedSender)) {
-      return dynamicMappings[cleanedSender]!;
-    }
-
-    // Fallback to hardcoded mappings for backward compatibility
-    // Check user's bank mappings first
-    for (final entry in _userBankMapping.entries) {
-      final bankName = entry.key;
-      final senderIds = entry.value;
-
-      if (senderIds.any((id) => cleanedSender.contains(id.toUpperCase()))) {
-        return bankName;
-      }
-    }
-
-    // Check user's credit card mappings
-    for (final entry in _userCreditCardMapping.entries) {
-      final cardName = entry.key;
-      final senderIds = entry.value;
-
-      if (senderIds.any((id) => cleanedSender.contains(id.toUpperCase()))) {
-        return cardName;
-      }
-    }
-
-    // Return cleaned sender if no mapping found
-    return cleanedSender;
+    final sender = cleanSender(rawSender).toUpperCase();
+    return (await _loadSenderMappings())[sender] ?? sender;
   }
 
-  /// Sync version of getUnifiedSenderName for compatibility
-  /// Uses cached mappings, falls back to hardcoded if cache is empty
   static String getUnifiedSenderNameSync(String rawSender) {
-    final cleanedSender = _cleanSender(rawSender).toUpperCase();
-
-    // Try cached mappings first
-    if (_senderMappingCache != null && _senderMappingCache!.containsKey(cleanedSender)) {
-      return _senderMappingCache![cleanedSender]!;
-    }
-
-    // Fallback to hardcoded mappings
-    // Check user's bank mappings first
-    for (final entry in _userBankMapping.entries) {
-      final bankName = entry.key;
-      final senderIds = entry.value;
-
-      if (senderIds.any((id) => cleanedSender.contains(id.toUpperCase()))) {
-        return bankName;
-      }
-    }
-
-    // Check user's credit card mappings
-    for (final entry in _userCreditCardMapping.entries) {
-      final cardName = entry.key;
-      final senderIds = entry.value;
-
-      if (senderIds.any((id) => cleanedSender.contains(id.toUpperCase()))) {
-        return cardName;
-      }
-    }
-
-    // Return cleaned sender if no mapping found
-    return cleanedSender;
+    final sender = cleanSender(rawSender).toUpperCase();
+    return _senderMappingCache?[sender] ?? sender;
   }
 
   /// Gets all transactions grouped by unified sender names
   static Map<String, List<Transaction>> groupTransactionsBySender(
-      List<Transaction> transactions) {
+    List<Transaction> transactions,
+  ) {
     final Map<String, List<Transaction>> grouped = {};
 
     for (final transaction in transactions) {
@@ -245,76 +154,33 @@ class SmsParser {
     return grouped;
   }
 
-  /// Checks if a sender is one of user's specific banks/cards
-  /// Now uses dynamic mappings with hardcoded fallback
-  static Future<bool> isUserBank(String sender) async {
-    final unifiedName = await getUnifiedSenderName(sender);
+  static Future<bool> isUserBank(String sender) async =>
+      await SenderDiscoveryService.getAccountForSender(cleanSender(sender)) !=
+      null;
 
-    // Check if this sender is assigned to any account in the database
-    final accountId = await SenderDiscoveryService.getAccountForSender(cleanSender(sender));
-    if (accountId != null) {
-      return true; // Any assigned sender is considered a "user bank"
-    }
+  static bool isUserBankSync(String sender) =>
+      _senderMappingCache?.containsKey(cleanSender(sender).toUpperCase()) ??
+      false;
 
-    // Fallback to hardcoded mappings
-    return _userBankMapping.containsKey(unifiedName) ||
-           _userCreditCardMapping.containsKey(unifiedName);
-  }
-
-  /// Sync version for performance
-  static bool isUserBankSync(String sender) {
-    final unifiedName = getUnifiedSenderNameSync(sender);
-    return _userBankMapping.containsKey(unifiedName) ||
-           _userCreditCardMapping.containsKey(unifiedName);
-  }
-
-  /// Gets the account type (bank or credit card) for a sender
-  /// Now uses dynamic database mapping with hardcoded fallback
   static Future<String> getAccountType(String sender) async {
-    // Try to get account type from database
-    try {
-      final accountId = await SenderDiscoveryService.getAccountForSender(cleanSender(sender));
-      if (accountId != null) {
-        final accounts = await LocalStorageService.getAllAccounts();
-        final account = accounts.where((a) => a.id == accountId).isNotEmpty
-            ? accounts.where((a) => a.id == accountId).first
-            : null;
-        if (account != null) {
-          return account.typeLabel;
-        }
-      }
-    } catch (e) {
-      // Fall back to hardcoded logic if database fails
+    final id = await SenderDiscoveryService.getAccountForSender(
+      cleanSender(sender),
+    );
+    for (final account in await LocalStorageService.getAllAccounts()) {
+      if (account.id == id) return account.typeLabel;
     }
-
-    // Fallback to hardcoded mappings
-    final unifiedName = getUnifiedSenderNameSync(sender);
-
-    if (_userBankMapping.containsKey(unifiedName)) {
-      return 'Bank Account';
-    } else if (_userCreditCardMapping.containsKey(unifiedName)) {
-      return 'Credit Card';
-    }
-
     return 'Payment Service';
   }
 
-  /// Sync version for performance
-  static String getAccountTypeSync(String sender) {
-    final unifiedName = getUnifiedSenderNameSync(sender);
-
-    if (_userBankMapping.containsKey(unifiedName)) {
-      return 'Bank Account';
-    } else if (_userCreditCardMapping.containsKey(unifiedName)) {
-      return 'Credit Card';
-    }
-
-    return 'Payment Service';
-  }
+  static String getAccountTypeSync(String sender) => 'Payment Service';
 
   static Future<Transaction?> parse(
-      String body, String sender, DateTime date, String id) async {
-    if (!hasAmountIndicator(body)) return null;
+    String body,
+    String sender,
+    DateTime date,
+    String id,
+  ) async {
+    if (isNonTransaction(body) || !hasAmountIndicator(body)) return null;
 
     final amount = _extractAmount(body);
     if (amount == null || amount <= 0) return null;
@@ -328,7 +194,9 @@ class SmsParser {
     // Try to get account ID from sender mapping
     String? accountId;
     try {
-      accountId = await SenderDiscoveryService.getAccountForSender(cleanSender(sender));
+      accountId = await SenderDiscoveryService.getAccountForSender(
+        cleanSender(sender),
+      );
     } catch (e) {
       // If database access fails, accountId remains null
     }
@@ -349,10 +217,14 @@ class SmsParser {
     );
   }
 
-  /// Sync version of parse for compatibility (when account assignment isn't needed)
+  /// Sync version of parse for callers that do not need account assignment
   static Transaction? parseSync(
-      String body, String sender, DateTime date, String id) {
-    if (!hasAmountIndicator(body)) return null;
+    String body,
+    String sender,
+    DateTime date,
+    String id,
+  ) {
+    if (isNonTransaction(body) || !hasAmountIndicator(body)) return null;
 
     final amount = _extractAmount(body);
     if (amount == null || amount <= 0) return null;
@@ -386,8 +258,7 @@ class SmsParser {
     DateTime date,
     String id,
   ) {
-    final lower = body.toLowerCase();
-    if (!_hasAmountIndicator(lower)) return null;
+    if (isNonTransaction(body) || !hasAmountIndicator(body)) return null;
 
     final amount = _extractAmount(body);
     if (amount == null || amount <= 0) return null;
@@ -399,7 +270,8 @@ class SmsParser {
       amount: amount,
       source: _detectSource(body, sender),
       sender: sender,
-      merchant: _extractMerchant(body, TransactionType.debit) ??
+      merchant:
+          _extractMerchant(body, TransactionType.debit) ??
           _extractMerchant(body, TransactionType.credit),
       accountLast4: _extractAccountLast4(body),
       date: date,
@@ -429,8 +301,6 @@ class SmsParser {
       // The corrected transaction remains usable without an account mapping.
     }
 
-    final category =
-        TransactionCategory.fromStandardCategoryId(review.standardCategoryId);
     final transaction = Transaction(
       id: review.id,
       amount: review.amount,
@@ -445,185 +315,67 @@ class SmsParser {
       balance: review.balance,
       accountId: accountId,
       isUserCorrected: true,
-      category: category,
-      standardCategoryId: review.standardCategoryId,
-      categorySource: review.standardCategoryId == null
+      categoryId: review.categoryId,
+      categorySource: review.categoryId == null
           ? null
           : (review.categorySource ?? 'user'),
       tag: review.tag,
     );
-    if (review.standardCategoryId != null) return transaction;
-    final assignment = CategoryService.assign(transaction);
-    return transaction.copyWith(
-      category: TransactionCategory.fromStandardCategoryId(
-        assignment.categoryId,
-      ),
-      standardCategoryId: assignment.categoryId,
-      categorySource: assignment.source,
-    );
+    return transaction;
   }
 
   static bool _hasAmountIndicator(String lower) {
     return lower.contains('\u20b9') ||
-        RegExp(r'\b(?:rs\.?|inr)\s*\d|\b(?:amount|amt)\b')
-            .hasMatch(lower);
+        RegExp(r'\b(?:rs\.?|inr)\s*\d|\b(?:amount|amt)\b').hasMatch(lower);
   }
 
-  static double? _extractAmount(String body) {
-    // Patterns: Rs.1,234.56 | INR 1234 | ₹1,234.56 | Rs 1234.00
-    final patterns = [
-      RegExp(r'(?:rs\.?|inr|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)',
-          caseSensitive: false),
-      RegExp(
-          r'(?:amount|amt)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)',
-          caseSensitive: false),
-      RegExp(r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:rs|inr|₹)',
-          caseSensitive: false),
-    ];
+  /// Failed, pending and requested payments are not completed movements.
+  static bool isNonTransaction(String body) => RegExp(
+    r'\b(failed|declined|unsuccessful|pending|scheduled|due|requested|request to pay|will be|not debited|not credited)\b',
+    caseSensitive: false,
+  ).hasMatch(body);
 
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(body);
-      if (match != null) {
-        final str = match.group(1)!.replaceAll(',', '');
-        final val = double.tryParse(str);
-        if (val != null && val > 0 && val < 10000000) {
-          return val; // sanity: < 1 crore
-        }
+  static double? _extractAmount(String body) {
+    final pattern = RegExp(
+      r'(?:rs\.?|inr|\u20b9|amount[:\s]+|amt[:\s]+)\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+      caseSensitive: false,
+    );
+    final candidates = <double>{};
+    for (final match in pattern.allMatches(body)) {
+      final prefix = body.substring(0, match.start).toLowerCase();
+      // Balance and available-limit values never represent this payment.
+      if (RegExp(
+        r'(?:bal(?:ance)?|available limit|credit limit|outstanding)\s*[:.\-]?\s*(?:is\s*)?$',
+      ).hasMatch(prefix)) {
+        continue;
       }
+      final value = double.tryParse(match.group(1)!.replaceAll(',', ''));
+      if (value != null && value > 0 && value.isFinite) candidates.add(value);
     }
-    return null;
+    // Preserve ambiguous multi-amount messages for manual review of skipped SMS.
+    return candidates.length == 1 ? candidates.single : null;
   }
 
   static TransactionType _detectType(String body, String sender) {
-    final lower = body.toLowerCase();
-    final senderUpper = sender.toUpperCase();
-
-    // Check if this is from a credit card issuer (typically these are spending alerts)
-    final isFromCreditCard =
-        _creditCardSenders.any((s) => senderUpper.contains(s));
-
-    // Credit card specific patterns - these are almost always debits (spending)
-    final creditCardSpendPatterns = [
-      'spent',
-      'transaction of',
-      'txn of',
-      'purchase',
-      'used at',
-      'transaction at',
-      'payment of',
-      'charged',
-      'bill payment',
-    ];
-
-    // If from credit card sender and matches spend pattern, it's a debit
-    if (isFromCreditCard &&
-        creditCardSpendPatterns.any((p) => lower.contains(p))) {
-      return TransactionType.debit;
-    }
-
-    // Check for "Sent Rs." or "Txn Rs." at the beginning - clear debit indicators
-    if (RegExp(r'^sent\s+rs\.?', caseSensitive: false).hasMatch(body.trim()) ||
-        RegExp(r'^txn\s+rs\.?', caseSensitive: false).hasMatch(body.trim())) {
-      return TransactionType.debit;
-    }
-
-    // Check for "Rs. XXX Sent" pattern (Jio format)
-    if (RegExp(r'rs\.?\s*[\d,]+(?:\.\d{2})?\s+sent', caseSensitive: false).hasMatch(body)) {
-      return TransactionType.debit;
-    }
-
-    final creditWords = [
-      'credited',
-      'received',
-      'credit',
-      'deposited',
-      'added',
-      'received from',
-      'money added',
-      'cashback',
-      'refund',
-      'reversed',
-      'reversal',
-      'credited with', // "a/c is credited with Rs.200"
-    ];
-    final debitWords = [
-      'debited',
-      'spent',
-      'debit',
-      'paid to',
-      'paid for',
-      'paid via',
-      'paid at',
-      'withdrawn',
-      'transferred to',
-      'purchase',
-      'charged',
-      'used at',
-      'sent to',
-      'transaction at',
-      'txn of',
-      'transaction of',
-      'bill payment',
-      'sent from', // "Rs.740 Sent from x9295"
-      'payment to',
-      'payment of',
-      'payment for',
-      'payment via',
-    ];
-
-    // Context-aware detection: "credited to merchant" means debit for you
-    // "your account credited" or "credited to [Bank] A/c" means credit for you
-    if (lower.contains('credited to') &&
-        !lower.contains('your') &&
-        !lower.contains('a/c credited') &&
-        !RegExp(r'credited to\s+[\w\s]*(?:a/c|account|ac\b)',
-                caseSensitive: false)
-            .hasMatch(body)) {
-      return TransactionType.debit;
-    }
-
-    // "Amount debited from" is a clear debit
-    if (lower.contains('debited from') || lower.contains('debit from')) {
-      return TransactionType.debit;
-    }
-
-    // "Amount credited to your" is a clear credit
-    if (lower.contains('credited to your') ||
-        lower.contains('credit to your')) {
+    if (isNonTransaction(body)) return TransactionType.unknown;
+    final lower = body.toLowerCase().replaceAll(
+      RegExp(r'\b(?:credit|debit)\s+card\b'),
+      'card',
+    );
+    // An explicit completed refund takes priority over purchase context.
+    if (RegExp(
+      r'\b(refunded|reversed|cashback credited|refund credited|refund of)\b',
+    ).hasMatch(lower)) {
       return TransactionType.credit;
     }
-
-    bool hasCredit = creditWords.any((w) => lower.contains(w));
-    bool hasDebit = debitWords.any((w) => lower.contains(w));
-
-    // If from credit card and both signals present, prefer debit (spending)
-    if (isFromCreditCard && hasCredit && hasDebit) {
-      return TransactionType.debit;
-    }
-
-    if (hasCredit && !hasDebit) return TransactionType.credit;
-    if (hasDebit && !hasCredit) return TransactionType.debit;
-
-    // Both or neither – use positional heuristic
-    // Check what comes first in the message
-    if (hasCredit && hasDebit) {
-      int creditPos = creditWords
-          .map((w) => lower.indexOf(w))
-          .where((i) => i >= 0)
-          .reduce((a, b) => a < b ? a : b);
-      int debitPos = debitWords
-          .map((w) => lower.indexOf(w))
-          .where((i) => i >= 0)
-          .reduce((a, b) => a < b ? a : b);
-      return creditPos < debitPos
-          ? TransactionType.credit
-          : TransactionType.debit;
-    }
-
-    // If from credit card and no clear signal, assume debit
-    if (isFromCreditCard) return TransactionType.debit;
-
-    return TransactionType.unknown;
+    final credit = RegExp(
+      r'\b(credited|received|deposited|added|cashback|refund|reversal)\b',
+    ).hasMatch(lower);
+    final debit = RegExp(
+      r'\b(debited|spent|paid|withdrawn|transferred to|purchase|charged|used|sent|payment to|payment of|txn of|transaction of|transaction at)\b',
+    ).hasMatch(lower);
+    if (credit == debit) return TransactionType.unknown;
+    return credit ? TransactionType.credit : TransactionType.debit;
   }
 
   static PaymentSource _detectSource(String body, String sender) {
@@ -636,7 +388,8 @@ class SmsParser {
         s.contains('PHONEPE')) {
       return PaymentSource.upi;
     }
-    if (lower.contains('credit card') ||
+    if (_creditCardSenders.any(s.contains) ||
+        lower.contains('credit card') ||
         lower.contains('debit card') ||
         lower.contains('card no')) {
       return PaymentSource.card;
@@ -653,9 +406,9 @@ class SmsParser {
     if (type == TransactionType.debit) {
       // Pattern 1: "Info: UPI/DR/REF/MERCHANT" (Jio format)
       final infoMatch = RegExp(
-              r'Info:\s*UPI/(?:DR|CR)/\d+/([A-Za-z0-9 ]+)',
-              caseSensitive: false)
-          .firstMatch(body);
+        r'Info:\s*UPI/(?:DR|CR)/\d+/([A-Za-z0-9 ]+)',
+        caseSensitive: false,
+      ).firstMatch(body);
       if (infoMatch != null) {
         final name = infoMatch.group(1)!.trim();
         if (name.length > 2 && name.length < 40) return name;
@@ -663,19 +416,19 @@ class SmsParser {
 
       // Pattern 2: "At VPA@bank" (HDFC Card UPI format)
       final atVpaMatch = RegExp(
-              r'(?:at)\s+([A-Za-z0-9.\-]+@[A-Za-z0-9]+)',
-              caseSensitive: false)
-          .firstMatch(body);
+        r'(?:at)\s+([A-Za-z0-9.\-]+@[A-Za-z0-9]+)',
+        caseSensitive: false,
+      ).firstMatch(body);
       if (atVpaMatch != null) {
         return atVpaMatch.group(1)!.trim();
       }
 
       // Pattern 3: "To MERCHANT NAME" at start of line (HDFC UPI multi-line format)
       final toLineMatch = RegExp(
-              r'(?:^|\n)To\s+([A-Z][A-Za-z0-9 ]+?)(?:\s*\n|\s+On\s|\s*$)',
-              caseSensitive: false,
-              multiLine: true)
-          .firstMatch(body);
+        r'(?:^|\n)To\s+([A-Z][A-Za-z0-9 ]+?)(?:\s*\n|\s+On\s|\s*$)',
+        caseSensitive: false,
+        multiLine: true,
+      ).firstMatch(body);
       if (toLineMatch != null) {
         final name = toLineMatch.group(1)!.trim();
         if (name.length > 2 && name.length < 40) return name;
@@ -683,9 +436,9 @@ class SmsParser {
 
       // Pattern 4: "at MERCHANT NAME" or "to VPA@bank" (original patterns)
       final atMatch = RegExp(
-              r"(?:at|to)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)",
-              caseSensitive: false)
-          .firstMatch(body);
+        r"(?:at|to)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+for|\s+ref|\.|,|$)",
+        caseSensitive: false,
+      ).firstMatch(body);
       if (atMatch != null) {
         final name = atMatch.group(1)!.trim();
         if (name.length > 2 && name.length < 40) return name;
@@ -694,17 +447,17 @@ class SmsParser {
     if (type == TransactionType.credit) {
       // Try VPA pattern first: "from VPA xxx@yyy"
       final vpaMatch = RegExp(
-              r'(?:from)\s+(?:VPA\s+)?([A-Za-z0-9.\-]+@[A-Za-z0-9]+)',
-              caseSensitive: false)
-          .firstMatch(body);
+        r'(?:from)\s+(?:VPA\s+)?([A-Za-z0-9.\-]+@[A-Za-z0-9]+)',
+        caseSensitive: false,
+      ).firstMatch(body);
       if (vpaMatch != null) {
         return vpaMatch.group(1)!.trim();
       }
       // Standard "from MERCHANT" pattern
       final fromMatch = RegExp(
-              r"(?:from|by)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+ref|\.|,|$)",
-              caseSensitive: false)
-          .firstMatch(body);
+        r"(?:from|by)\s+([A-Z][A-Za-z0-9 &\-']+?)(?:\s+on|\s+via|\s+ref|\.|,|$)",
+        caseSensitive: false,
+      ).firstMatch(body);
       if (fromMatch != null) {
         final name = fromMatch.group(1)!.trim();
         if (name.length > 2 && name.length < 40) return name;
@@ -716,8 +469,10 @@ class SmsParser {
   static String? _extractAccountLast4(String body) {
     final patterns = [
       // Pattern 1: "a/c XX1234" or "A/C *1651" (standard bank format)
-      RegExp(r'(?:a/c|account|ac)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})',
-          caseSensitive: false),
+      RegExp(
+        r'(?:a/c|account|ac)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})',
+        caseSensitive: false,
+      ),
       // Pattern 2: "Card 9162" (HDFC Card format - just 4 digits after Card)
       RegExp(r'(?:card)\s*(?:no\.?|num\.?)?\s*(\d{4})\b', caseSensitive: false),
       // Pattern 3: "from x9295" or "x9295" (Jio format - x followed by 4 digits)
@@ -737,8 +492,10 @@ class SmsParser {
       // Pattern 1: "Txn ID: 322438863654" (Airtel format)
       RegExp(r'(?:txn\s*id)[:\s]+(\d{10,15})', caseSensitive: false),
       // Pattern 2: "ref.:", "txn.:", "utr", "rrn" followed by alphanumeric
-      RegExp(r'(?:ref\.?|txn\.?|utr|rrn)[:\s#]+([A-Z0-9]{8,22})',
-          caseSensitive: false),
+      RegExp(
+        r'(?:ref\.?|txn\.?|utr|rrn)[:\s#]+([A-Z0-9]{8,22})',
+        caseSensitive: false,
+      ),
       // Pattern 3: "by UPI 119184082771" (HDFC Card format)
       RegExp(r'by\s+UPI\s+(\d{9,15})', caseSensitive: false),
       // Pattern 4: "Ref 179775436288" (HDFC UPI format - no colon)
@@ -757,9 +514,9 @@ class SmsParser {
 
   static double? _extractBalance(String body) {
     final match = RegExp(
-            r'(?:bal(?:ance)?|avl\.?)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)',
-            caseSensitive: false)
-        .firstMatch(body);
+      r'(?:bal(?:ance)?|avl\.?)[:\s]+(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+      caseSensitive: false,
+    ).firstMatch(body);
     if (match != null) {
       final str = match.group(1)!.replaceAll(',', '');
       return double.tryParse(str);
@@ -770,9 +527,5 @@ class SmsParser {
   static String cleanSender(String sender) {
     // "DM-HDFCBK" → "HDFCBK"
     return sender.replaceAll(RegExp(r'^[A-Z]{2}-'), '');
-  }
-
-  static String _cleanSender(String sender) {
-    return cleanSender(sender); // Delegate to public method
   }
 }

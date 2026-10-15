@@ -29,7 +29,8 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
     _data = _load();
   }
 
-  Future<(List<TransactionReview>, List<SmsProcessingRecord>, int)> _load() async {
+  Future<(List<TransactionReview>, List<SmsProcessingRecord>, int)>
+  _load() async {
     final results = await Future.wait<Object>([
       LocalStorageService.getTransactionReviews(ignored: true),
       LocalStorageService.getSkippedPaymentMessages(),
@@ -81,12 +82,16 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Enter the amount. You can choose debit or credit in the review inbox.'),
+              const Text(
+                'Enter the amount. You can choose debit or credit in the review inbox.',
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
                 autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Amount',
                   prefixText: '₹ ',
@@ -104,7 +109,9 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
               onPressed: () {
                 final value = double.tryParse(controller.text.trim());
                 if (value == null || value <= 0 || value >= 10000000) {
-                  setDialogState(() => error = 'Enter a valid positive amount.');
+                  setDialogState(
+                    () => error = 'Enter a valid positive amount.',
+                  );
                   return;
                 }
                 Navigator.pop(context, value);
@@ -139,76 +146,89 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Message Decisions'),
-          bottom: const TabBar(tabs: [
-            Tab(text: 'Ignored reviews'),
-            Tab(text: 'Skipped by rules'),
-          ]),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Ignored reviews'),
+              Tab(text: 'Skipped by rules'),
+            ],
+          ),
         ),
-        body:
-            FutureBuilder<(List<TransactionReview>, List<SmsProcessingRecord>, int)>(
+        body: FutureBuilder<(List<TransactionReview>, List<SmsProcessingRecord>, int)>(
           future: _data,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               if (snapshot.hasError) {
                 return Center(
-                    child: Text(
-                        'Unable to load message decisions: ${snapshot.error}'));
+                  child: Text(
+                    'Unable to load message decisions: ${snapshot.error}',
+                  ),
+                );
               }
               return const Center(child: CircularProgressIndicator());
             }
             final (ignored, skipped, totalSkipped) = snapshot.data!;
-            return TabBarView(children: [
-              _list(
-                ignored.isEmpty
-                    ? const [
-                        ListTile(title: Text('No ignored review messages'))
-                      ]
-                    : ignored
-                        .map((review) => Card(
-                              child: ListTile(
-                                title: Text(
-                                    '${review.sender} · ₹${review.amount.toStringAsFixed(2)}'),
-                                subtitle: Text(
-                                  '${DateFormat.yMMMd().add_jm().format(review.date)}\n${review.rawMessage}',
-                                  maxLines: 4,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                isThreeLine: true,
-                                trailing: TextButton(
-                                  onPressed: () => _restore(review),
-                                  child: const Text('Restore'),
+            return TabBarView(
+              children: [
+                _list(
+                  ignored.isEmpty
+                      ? const [
+                          ListTile(title: Text('No ignored review messages')),
+                        ]
+                      : ignored
+                            .map(
+                              (review) => Card(
+                                child: ListTile(
+                                  title: Text(
+                                    '${review.sender} · ₹${review.amount.toStringAsFixed(2)}',
+                                  ),
+                                  subtitle: Text(
+                                    '${DateFormat.yMMMd().add_jm().format(review.date)}\n${review.rawMessage}',
+                                    maxLines: 4,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  isThreeLine: true,
+                                  trailing: TextButton(
+                                    onPressed: () => _restore(review),
+                                    child: const Text('Restore'),
+                                  ),
                                 ),
                               ),
-                            ))
-                        .toList(),
-              ),
-              _list([
-                ListTile(
-                  title:
-                      Text('${skipped.length} payment-like messages skipped'),
-                  subtitle: Text(
-                    '${totalSkipped - skipped.length} other skipped scans have no saved '
-                    'message body, including older app data.',
-                  ),
-                  trailing: _rescanning
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator())
-                      : IconButton(
-                          tooltip: 'Recheck skipped messages',
-                          onPressed: _recheckSkipped,
-                          icon: const Icon(Icons.refresh),
-                        ),
+                            )
+                            .toList(),
                 ),
-                if (skipped.isEmpty)
-                  const ListTile(
-                      title: Text('No skipped payment-like messages')),
-                ...skipped.map((record) => Card(
+                _list([
+                  ListTile(
+                    title: Text(
+                      '${skipped.length} payment-like messages skipped',
+                    ),
+                    subtitle: Text(
+                      '${totalSkipped - skipped.length} other skipped scans have no saved '
+                      'message body, including older app data.',
+                    ),
+                    trailing: _rescanning
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(),
+                          )
+                        : IconButton(
+                            tooltip: 'Recheck skipped messages',
+                            onPressed: _recheckSkipped,
+                            icon: const Icon(Icons.refresh),
+                          ),
+                  ),
+                  if (skipped.isEmpty)
+                    const ListTile(
+                      title: Text('No skipped payment-like messages'),
+                    ),
+                  ...skipped.map(
+                    (record) => Card(
                       child: ExpansionTile(
-                        title: Text(record.sender.isEmpty
-                            ? 'Unknown sender'
-                            : record.sender),
+                        title: Text(
+                          record.sender.isEmpty
+                              ? 'Unknown sender'
+                              : record.sender,
+                        ),
                         subtitle: Text(
                           '${DateFormat.yMMMd().add_jm().format(record.date)} · '
                           '${record.folder} · ${_reason(record.reason)}',
@@ -224,7 +244,8 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
                           Align(
                             alignment: Alignment.centerRight,
                             child: TextButton.icon(
-                              onPressed: _rescanning ||
+                              onPressed:
+                                  _rescanning ||
                                       context.watch<SmsService>().isLoading
                                   ? null
                                   : () => _sendToReview(record),
@@ -234,9 +255,11 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
                           ),
                         ],
                       ),
-                    )),
-              ]),
-            ]);
+                    ),
+                  ),
+                ]),
+              ],
+            );
           },
         ),
       ),
@@ -244,24 +267,24 @@ class _IgnoredMessagesScreenState extends State<IgnoredMessagesScreen> {
   }
 
   Widget _list(List<Widget> children) => RefreshIndicator(
-        onRefresh: () async {
-          setState(_reload);
-          await _data;
-        },
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
-          children: children,
-        ),
-      );
+    onRefresh: () async {
+      setState(_reload);
+      await _data;
+    },
+    child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      children: children,
+    ),
+  );
 
   String _reason(String reason) => switch (reason) {
-        'sender_not_recognized' => 'Sender or message not recognized',
-        'sent_unrecognized' => 'Sent message from an unknown payment sender',
-        'no_amount_indicator' => 'No payment amount',
-        'security_message' => 'Security code or login message',
-        'amount_not_found' => 'Amount could not be read',
-        'legacy_unclassified' => 'Processed before reasons were recorded',
-        _ => 'No transaction detected',
-      };
+    'sender_not_recognized' => 'Sender or message not recognized',
+    'sent_unrecognized' => 'Sent message from an unknown payment sender',
+    'no_amount_indicator' => 'No payment amount',
+    'security_message' => 'Security code or login message',
+    'amount_not_found' => 'Amount could not be read',
+    'not_completed' => 'Payment failed, pending, or requested',
+    _ => 'No transaction detected',
+  };
 }

@@ -49,14 +49,20 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     final anomalies = AnomalyService.detectAnomalies(transactions);
     final duplicates = AnomalyService.detectDuplicates(transactions);
-    final budgetStatuses =
-        await BudgetService.getOverBudgetAlerts(transactions: transactions);
-    final budgetUsage =
-        await BudgetService.checkBudgets(transactions: transactions);
+    final budgetStatuses = await BudgetService.getOverBudgetAlerts(
+      transactions: transactions,
+    );
+    final budgetUsage = await BudgetService.checkBudgets(
+      transactions: transactions,
+    );
     final totalBudget = budgetUsage.fold<double>(
-        0, (sum, status) => sum + status.budget.monthlyLimit);
-    final totalBudgetSpent =
-        budgetUsage.fold<double>(0, (sum, status) => sum + status.spent);
+      0,
+      (sum, status) => sum + status.budget.monthlyLimit,
+    );
+    final totalBudgetSpent = budgetUsage.fold<double>(
+      0,
+      (sum, status) => sum + status.spent,
+    );
     final digest = AnomalyService.generateDailyDigest(
       transactions,
       totalBudget,
@@ -67,13 +73,12 @@ class _AlertsScreenState extends State<AlertsScreen>
     final budgetAlerts = budgetStatuses
         .map(
           (status) => AppAlert(
-            id: 'budget_${status.standardCategory.id}_${DateTime.now().millisecondsSinceEpoch}',
+            id: 'budget_${status.category.id}_${DateTime.now().millisecondsSinceEpoch}',
             type: AlertType.budgetWarning,
             severity: status.isOverBudget
                 ? AlertSeverity.critical
                 : AlertSeverity.warning,
-            title:
-                '${status.standardCategory.emoji} ${status.standardCategory.displayName} budget',
+            title: '${status.category.emoji} ${status.category.name} budget',
             message:
                 '${status.percentage.toStringAsFixed(0)}% used - ₹${status.spent.toStringAsFixed(0)} of ₹${status.budget.monthlyLimit.toStringAsFixed(0)}',
           ),
@@ -230,8 +235,11 @@ class _AlertsScreenState extends State<AlertsScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle_outline,
-                size: 48, color: Colors.green[300]),
+            Icon(
+              Icons.check_circle_outline,
+              size: 48,
+              color: Colors.green[300],
+            ),
             const SizedBox(height: 12),
             const Text(
               'All clear!',

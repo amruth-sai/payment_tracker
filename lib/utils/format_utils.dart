@@ -6,15 +6,9 @@ import 'package:intl/intl.dart';
 class FormatUtils {
   FormatUtils._(); // Private constructor to prevent instantiation
 
-  /// Format amount with K/L notation for large numbers
+  /// Format an exact amount without dropping paise
   static String formatAmount(double amount) {
-    if (amount >= 100000) {
-      return '${(amount / 100000).toStringAsFixed(2)}L';
-    } else if (amount >= 1000) {
-      final formatter = NumberFormat('#,##,###');
-      return formatter.format(amount.toInt());
-    }
-    return amount.toStringAsFixed(amount.truncateToDouble() == amount ? 0 : 2);
+    return NumberFormat('#,##,##0.##', 'en_IN').format(amount);
   }
 
   /// Format amount with currency symbol

@@ -59,8 +59,9 @@ class _TrackingOnboardingSheetState extends State<TrackingOnboardingSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color:
-                      theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.3,
+                  ),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -157,8 +158,9 @@ class _TrackingOnboardingSheetState extends State<TrackingOnboardingSheet> {
                       label: 'Last 30 days',
                       onTap: () {
                         setState(() {
-                          _selectedDate = DateTime.now()
-                              .subtract(const Duration(days: 30));
+                          _selectedDate = DateTime.now().subtract(
+                            const Duration(days: 30),
+                          );
                           _selectedOption = 0;
                         });
                       },
@@ -168,8 +170,9 @@ class _TrackingOnboardingSheetState extends State<TrackingOnboardingSheet> {
                       label: 'Last 90 days',
                       onTap: () {
                         setState(() {
-                          _selectedDate = DateTime.now()
-                              .subtract(const Duration(days: 90));
+                          _selectedDate = DateTime.now().subtract(
+                            const Duration(days: 90),
+                          );
                           _selectedOption = 0;
                         });
                       },
@@ -188,9 +191,10 @@ class _TrackingOnboardingSheetState extends State<TrackingOnboardingSheet> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Text('Continue',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
@@ -314,9 +318,11 @@ class _OptionCard extends StatelessWidget {
               if (selected)
                 Icon(Icons.check_circle, color: color, size: 24)
               else
-                Icon(Icons.radio_button_unchecked,
-                    color: theme.colorScheme.outline.withValues(alpha: 0.4),
-                    size: 24),
+                Icon(
+                  Icons.radio_button_unchecked,
+                  color: theme.colorScheme.outline.withValues(alpha: 0.4),
+                  size: 24,
+                ),
             ],
           ),
         ),

@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../models/standard_category.dart';
+import '../models/app_category.dart';
 import '../models/transaction.dart';
 import '../services/budget_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 import '../widgets/transaction_detail_sheet.dart';
+import 'categories_screen.dart';
 
 enum _CoverageScope { period, allTime }
 
@@ -31,7 +32,7 @@ class OutsideBudgetTransactionsScreen extends StatefulWidget {
 class _OutsideBudgetTransactionsScreenState
     extends State<OutsideBudgetTransactionsScreen> {
   List<Transaction> _transactions = const [];
-  Map<String, StandardCategory> _categoriesById = const {};
+  Map<String, AppCategory> _categoriesById = const {};
   Set<String> _budgetCategoryIds = const {};
   _CoverageScope _scope = _CoverageScope.period;
   String _search = '';
@@ -52,8 +53,7 @@ class _OutsideBudgetTransactionsScreenState
       if (!mounted) return;
       setState(() {
         _transactions = transactions;
-        _budgetCategoryIds =
-            budgets.map((budget) => budget.standardCategoryId).toSet();
+        _budgetCategoryIds = budgets.map((budget) => budget.categoryId).toSet();
         _categoriesById = categories;
         _loading = false;
       });
@@ -77,17 +77,19 @@ class _OutsideBudgetTransactionsScreenState
 
   String _categoryLabel(Transaction transaction) {
     final categoryId = BudgetService.categoryIdForTransaction(transaction);
-    if (categoryId == 'uncategorized') return 'Needs category';
-    return _categoriesById[categoryId]?.displayName ?? 'Category not found';
+    if (categoryId == null) return 'Needs category';
+    return _categoriesById[categoryId]?.name ?? 'Category not found';
   }
 
   Future<void> _chooseCategory(Transaction transaction) async {
     if (_saving) return;
-    final available = _categoriesById.values
-        .where((category) => category.isActive)
-        .where(BudgetService.isBudgetableCategory)
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final available =
+        _categoriesById.values
+            .where(BudgetService.isBudgetableCategory)
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
     final budgeted = available
         .where((category) => _budgetCategoryIds.contains(category.id))
         .toList();
@@ -114,29 +116,47 @@ class _OutsideBudgetTransactionsScreenState
               child: ListView(
                 controller: scrollController,
                 children: [
+                  ListTile(
+                    leading: const Icon(Icons.add),
+                    title: const Text('Manage categories'),
+                    onTap: () => Navigator.pop(sheetContext, '__manage'),
+                  ),
+                  ListTile(
+                    title: const Text('Uncategorized'),
+                    onTap: () => Navigator.pop(sheetContext, ''),
+                  ),
                   if (budgeted.isNotEmpty) ...[
                     const ListTile(title: Text('Categories with budgets')),
-                    ...budgeted.map((category) => ListTile(
-                          leading: Text(category.emoji,
-                              style: const TextStyle(fontSize: 22)),
-                          title: Text(category.displayName),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.pop(sheetContext, category.id),
-                        )),
+                    ...budgeted.map(
+                      (category) => ListTile(
+                        leading: Text(
+                          category.emoji,
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        title: Text(category.name),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.pop(sheetContext, category.id),
+                      ),
+                    ),
                   ],
                   if (other.isNotEmpty) ...[
                     const Divider(),
                     const ListTile(
                       title: Text('Other categories'),
                       subtitle: Text(
-                          'These need a budget before spending is covered.'),
+                        'These need a budget before spending is covered.',
+                      ),
                     ),
-                    ...other.map((category) => ListTile(
-                          leading: Text(category.emoji,
-                              style: const TextStyle(fontSize: 22)),
-                          title: Text(category.displayName),
-                          onTap: () => Navigator.pop(sheetContext, category.id),
-                        )),
+                    ...other.map(
+                      (category) => ListTile(
+                        leading: Text(
+                          category.emoji,
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        title: Text(category.name),
+                        onTap: () => Navigator.pop(sheetContext, category.id),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -146,12 +166,20 @@ class _OutsideBudgetTransactionsScreenState
       ),
     );
     if (selectedId == null || !mounted) return;
+    if (selectedId == '__manage') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+      );
+      if (mounted) await _load();
+      return;
+    }
 
     setState(() => _saving = true);
     try {
-      await LocalStorageService.updateTransactionBudgetCategory(
+      await LocalStorageService.updateTransactionCategory(
         transaction.id,
-        selectedId,
+        selectedId.isEmpty ? null : selectedId,
       );
       if (!mounted) return;
       await context.read<SmsService>().reloadFromCache();
@@ -159,9 +187,11 @@ class _OutsideBudgetTransactionsScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_budgetCategoryIds.contains(selectedId)
-              ? 'Transaction now counts toward that budget.'
-              : 'Category updated. Add a budget to cover it.'),
+          content: Text(
+            _budgetCategoryIds.contains(selectedId)
+                ? 'Transaction now counts toward that budget.'
+                : 'Category updated. Add a budget to cover it.',
+          ),
         ),
       );
     } catch (_) {
@@ -219,12 +249,14 @@ class _OutsideBudgetTransactionsScreenState
                         Text(widget.periodLabel),
                         const SizedBox(height: 4),
                       ],
-                      Text('${outside.length} spending transactions · '
-                          '${currency.format(total)}'),
+                      Text(
+                        '${outside.length} spending transactions · '
+                        '${currency.format(total)}',
+                      ),
                       const SizedBox(height: 4),
                       const Text(
                         'Income, ignored transactions, and transfers are excluded. '
-                        'My Categories take precedence over standard categories.',
+                        'Choose a category to organize this payment and include it in its budget.',
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -241,11 +273,13 @@ class _OutsideBudgetTransactionsScreenState
                 Expanded(
                   child: visible.isEmpty
                       ? Center(
-                          child: Text(outside.isEmpty
-                              ? _scope == _CoverageScope.period
-                                  ? 'All spending in this period has a budget.'
-                                  : 'All tracked spending has a budget.'
-                              : 'No transactions match your search.'),
+                          child: Text(
+                            outside.isEmpty
+                                ? _scope == _CoverageScope.period
+                                      ? 'All spending in this period has a budget.'
+                                      : 'All tracked spending has a budget.'
+                                : 'No transactions match your search.',
+                          ),
                         )
                       : ListView.builder(
                           itemCount: visible.length,
@@ -253,21 +287,26 @@ class _OutsideBudgetTransactionsScreenState
                             final tx = visible[index];
                             return Card(
                               margin: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
                               child: Padding(
                                 padding: const EdgeInsets.fromLTRB(4, 4, 12, 8),
                                 child: Column(
                                   children: [
                                     ListTile(
-                                      title: Text(tx.displayName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis),
+                                      title: Text(
+                                        tx.displayName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                       subtitle: Text(
                                         '${DateFormat.yMMMd().format(tx.date)} · '
                                         '${_categoryLabel(tx)}',
                                       ),
-                                      trailing:
-                                          Text(currency.format(tx.amount)),
+                                      trailing: Text(
+                                        currency.format(tx.amount),
+                                      ),
                                       onTap: () => TransactionDetailSheet.show(
                                         context,
                                         tx,
@@ -280,8 +319,9 @@ class _OutsideBudgetTransactionsScreenState
                                         onPressed: _saving
                                             ? null
                                             : () => _chooseCategory(tx),
-                                        icon:
-                                            const Icon(Icons.category_outlined),
+                                        icon: const Icon(
+                                          Icons.category_outlined,
+                                        ),
                                         label: const Text('Choose category'),
                                       ),
                                     ),
