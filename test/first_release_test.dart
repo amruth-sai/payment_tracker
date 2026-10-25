@@ -66,6 +66,82 @@ void main() {
     });
 
     test(
+      'bulk category assignment preserves all other fields and deduplicates IDs',
+      () async {
+        await LocalStorageService.saveCategory(category('a', 'Original'));
+        await LocalStorageService.saveCategory(category('b', 'New'));
+        await LocalStorageService.saveTransactions([
+          payment(
+            'one',
+            categoryId: 'a',
+          ).copyWith(note: 'keep', tag: 'work', isIgnored: true),
+          payment('two', categoryId: 'a').copyWith(
+            transferGroupId: 'pair',
+            transferPartnerId: 'three',
+            isTransferSource: true,
+          ),
+          payment(
+            'three',
+            categoryId: 'a',
+            type: TransactionType.credit,
+          ).copyWith(
+            transferGroupId: 'pair',
+            transferPartnerId: 'two',
+            isTransferDestination: true,
+          ),
+        ]);
+        final before = await db.query('transactions', orderBy: 'id');
+        expect(
+          await LocalStorageService.updateTransactionCategories(
+            transactionIds: ['one', 'two', 'one'],
+            categoryId: 'b',
+          ),
+          2,
+        );
+        final after = await db.query('transactions', orderBy: 'id');
+        for (var i = 0; i < before.length; i++) {
+          expect(after[i], {
+            ...before[i],
+            if (before[i]['id'] != 'three') ...{
+              'category_id': 'b',
+              'category_source': 'user',
+            },
+          });
+        }
+      },
+    );
+
+    test(
+      'bulk category assignment rolls back missing transactions or categories',
+      () async {
+        await LocalStorageService.saveCategory(category('a', 'New'));
+        await LocalStorageService.saveTransaction(payment('one'));
+        await expectLater(
+          LocalStorageService.updateTransactionCategories(
+            transactionIds: ['one', 'missing'],
+            categoryId: 'a',
+          ),
+          throwsStateError,
+        );
+        expect(
+          (await LocalStorageService.getAllTransactions()).single.categoryId,
+          isNull,
+        );
+        await expectLater(
+          LocalStorageService.updateTransactionCategories(
+            transactionIds: ['one'],
+            categoryId: 'missing',
+          ),
+          throwsStateError,
+        );
+        expect(
+          (await LocalStorageService.getAllTransactions()).single.categoryId,
+          isNull,
+        );
+      },
+    );
+
+    test(
       'starts at v1 with no categories, rules, budgets, or migration tables',
       () async {
         expect(await db.getVersion(), 1);

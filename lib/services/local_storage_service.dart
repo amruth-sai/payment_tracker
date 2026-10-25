@@ -1435,6 +1435,42 @@ class LocalStorageService {
     );
   }
 
+  /// Assign only the category to exactly these rows, including ignored/transfer
+  /// entries explicitly selected by the user. Missing rows abort the whole batch.
+  static Future<int> updateTransactionCategories({
+    required Iterable<String> transactionIds,
+    required String categoryId,
+  }) async {
+    final ids = transactionIds.toSet();
+    if (ids.isEmpty) return 0;
+    final db = await database;
+    return db.transaction((txn) async {
+      final category = await txn.query(
+        'categories',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [categoryId],
+      );
+      if (category.isEmpty) {
+        throw StateError('The selected category no longer exists.');
+      }
+      final batch = txn.batch();
+      for (final id in ids) {
+        batch.update(
+          'transactions',
+          {'category_id': categoryId, 'category_source': 'user'},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+      final results = await batch.commit();
+      if (results.any((count) => count != 1)) {
+        throw StateError('A selected transaction no longer exists.');
+      }
+      return ids.length;
+    });
+  }
+
   /// Assigns a Category and trip tag to exactly the previewed active rows.
   /// The whole window succeeds or fails together.
   static Future<int> applyCategoryToTransactions({

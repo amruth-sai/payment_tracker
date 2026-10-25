@@ -71,6 +71,17 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     '🔁', // Subscriptions
     '🔄', // Transfers
     '❓', // Uncategorized
+    '🏍️', // Motorcycle
+    '🛵', // Scooter
+    '🚲', // Bicycle
+    '🛍️', // Shopping bags
+    '👕', // Clothing
+    '👟', // Shoes
+    '📱', // Phone
+    '💻', // Laptop
+    '🎧', // Headphones
+    '⌚', // Watch
+    '🖥️', // Desktop computer
   ];
 
   static const _colorOptions = [

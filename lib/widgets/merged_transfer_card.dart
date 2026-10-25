@@ -8,6 +8,12 @@ import '../constants/transfer_constants.dart';
 class MergedTransferCard extends StatelessWidget {
   final MergedTransfer mergedTransfer;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool selectionMode;
+  final bool sourceSelected;
+  final bool destinationSelected;
+  final ValueChanged<bool>? onSourceSelected;
+  final ValueChanged<bool>? onDestinationSelected;
   final Function(MergedTransfer)? onSwipeUnmerge;
   final Function(MergedTransfer)? onSwipeIgnore;
 
@@ -15,6 +21,12 @@ class MergedTransferCard extends StatelessWidget {
     super.key,
     required this.mergedTransfer,
     this.onTap,
+    this.onLongPress,
+    this.selectionMode = false,
+    this.sourceSelected = false,
+    this.destinationSelected = false,
+    this.onSourceSelected,
+    this.onDestinationSelected,
     this.onSwipeUnmerge,
     this.onSwipeIgnore,
   });
@@ -28,17 +40,19 @@ class MergedTransferCard extends StatelessWidget {
     final cardContent = Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: selectionMode && (sourceSelected || destinationSelected)
+          ? theme.colorScheme.primaryContainer
+          : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: selectionMode && (sourceSelected || destinationSelected)
+            ? BorderSide(color: theme.colorScheme.primary)
+            : BorderSide.none,
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap != null
-            ? () {
-                debugPrint(
-                  '🔄 MergedTransferCard tapped for group: ${mergedTransfer.transferGroupId}',
-                );
-                onTap!();
-              }
-            : null,
+        onTap: onTap,
+        onLongPress: onLongPress,
         splashColor: transferColor.withValues(alpha: 0.1),
         highlightColor: transferColor.withValues(alpha: 0.05),
         child: Padding(
@@ -46,19 +60,57 @@ class MergedTransferCard extends StatelessWidget {
           child: Row(
             children: [
               // Transfer icon with special design
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(14),
+              if (selectionMode)
+                SizedBox(
+                  width: 46,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Tooltip(
+                        message:
+                            'Select debit: ${mergedTransfer.sourceAccountName}',
+                        child: Checkbox(
+                          key: ValueKey(
+                            'select-transaction-${mergedTransfer.sourceTransaction.id}',
+                          ),
+                          semanticLabel:
+                              'Select debit: ${mergedTransfer.sourceAccountName}',
+                          value: sourceSelected,
+                          onChanged: (value) =>
+                              onSourceSelected?.call(value ?? false),
+                        ),
+                      ),
+                      Tooltip(
+                        message:
+                            'Select credit: ${mergedTransfer.destinationAccountName}',
+                        child: Checkbox(
+                          key: ValueKey(
+                            'select-transaction-${mergedTransfer.destinationTransaction.id}',
+                          ),
+                          semanticLabel:
+                              'Select credit: ${mergedTransfer.destinationAccountName}',
+                          value: destinationSelected,
+                          onChanged: (value) =>
+                              onDestinationSelected?.call(value ?? false),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.swap_horiz_rounded,
+                    color: transferColor,
+                    size: 22,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.swap_horiz_rounded,
-                  color: transferColor,
-                  size: 22,
-                ),
-              ),
               const SizedBox(width: 14),
 
               // Transfer details
@@ -185,7 +237,7 @@ class MergedTransferCard extends StatelessWidget {
     );
 
     // If no swipe callbacks provided, return plain card
-    if (onSwipeUnmerge == null && onSwipeIgnore == null) {
+    if (selectionMode || (onSwipeUnmerge == null && onSwipeIgnore == null)) {
       return cardContent;
     }
 

@@ -12,6 +12,10 @@ class TransactionCard extends StatelessWidget {
   final String? categoryLabel;
   final Color? categoryColor;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool selectionMode;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
   final Function(Transaction)? onSwipeIgnore;
   final Function(Transaction)? onSwipeToggleType;
 
@@ -22,6 +26,10 @@ class TransactionCard extends StatelessWidget {
     this.categoryLabel,
     this.categoryColor,
     this.onTap,
+    this.onLongPress,
+    this.selectionMode = false,
+    this.selected = false,
+    this.onSelected,
     this.onSwipeIgnore,
     this.onSwipeToggleType,
   });
@@ -43,10 +51,19 @@ class TransactionCard extends StatelessWidget {
     final cardContent = Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: selectionMode && selected
+          ? theme.colorScheme.primaryContainer
+          : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: selectionMode && selected
+            ? BorderSide(color: theme.colorScheme.primary)
+            : BorderSide.none,
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
+        onTap: selectionMode ? () => onSelected?.call(!selected) : onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -59,13 +76,20 @@ class TransactionCard extends StatelessWidget {
                   color: bgColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  isCredit
-                      ? Icons.arrow_downward_rounded
-                      : Icons.arrow_upward_rounded,
-                  color: color,
-                  size: 22,
-                ),
+                child: selectionMode
+                    ? Checkbox(
+                        key: ValueKey('select-transaction-${tx.id}'),
+                        value: selected,
+                        semanticLabel: 'Select ${tx.displayName}',
+                        onChanged: (value) => onSelected?.call(value ?? false),
+                      )
+                    : Icon(
+                        isCredit
+                            ? Icons.arrow_downward_rounded
+                            : Icons.arrow_upward_rounded,
+                        color: color,
+                        size: 22,
+                      ),
               ),
               const SizedBox(width: 14),
 
@@ -144,7 +168,7 @@ class TransactionCard extends StatelessWidget {
     );
 
     // If no swipe callbacks provided, return plain card
-    if (onSwipeIgnore == null && onSwipeToggleType == null) {
+    if (selectionMode || (onSwipeIgnore == null && onSwipeToggleType == null)) {
       return cardContent;
     }
 
