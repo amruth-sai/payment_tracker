@@ -142,3 +142,28 @@ Processing metadata records transaction, needsReview, or skipped, together with 
 [Core tests](test/core_services_test.dart) cover routing, rule precedence, review, export and date windows. [First-release tests](test/first_release_test.dart) exercise the real SQLite schema, category lifecycle, foreign keys, money, salary boundaries, backup rollback, fingerprinting, parser corrections, anomalies, and transfer matching.
 
 Rule parsing cannot understand every bank template. Distinct alerts for the same real payment can still appear twice if their content or timestamps differ; duplicate alerts invite review. Sender-to-account mapping is one sender to one account and may require a manual account correction when a bank shares a sender across several accounts. Physical-device checks remain necessary for SMS permission prompts, document pickers, password failure/cancellation, and representative real bank messages.
+
+## Copied RCS and missing payment messages
+
+The automatic reader queries Android's SMS inbox and sent folders. It does not
+read the private conversation history of Google Messages or other RCS apps.
+A rescan cannot recover an RCS-only alert from that chat.
+
+Use **Paste payment message** on Home or in Settings to import one copied alert.
+Enter its sender, verify the suggested `on dd/MM/yy` or `on dd/MM/yyyy` date,
+and explicitly select the original message time. No current-time default is
+silently assigned. Invalid dates, future times, security codes, failed/pending
+payments, and messages without one clear amount/direction are rejected.
+Previewing runs the existing local parser and merchant rules without saving;
+only **Save transaction** inserts a record. SBI `Credit Card ending 0042` alerts
+retain the leading-zero account suffix and use debit for `spent`.
+
+Imports use `import_` identities based on whitespace-normalized body and the
+original message minute, independent of sender aliases. An existing alert with
+the same body and minute is retained rather than overwritten, including ignored
+transactions and user edits. A later SMS scan also skips inserting that same
+imported alert while recording the SMS as processed. Different minutes remain
+separate payments. This depends on entering the correct original time; it does
+not attempt fuzzy matching of different bank-message bodies or incorrect times.
+Imported records follow the normal tracking filters and are included in database
+backups without a schema change.

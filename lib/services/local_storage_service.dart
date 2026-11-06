@@ -14,6 +14,7 @@ import '../utils/money.dart';
 import 'category_service.dart';
 import 'database_schema.dart';
 import 'sms_parser.dart';
+import 'sms_fingerprint.dart';
 import '../constants/transfer_constants.dart';
 
 class LocalStorageService {
@@ -141,18 +142,74 @@ class LocalStorageService {
     });
   }
 
+  /// A reviewed copied alert is inserted once and never overwrites user edits.
+  /// Compare original message content and minute, independent of sender aliases.
+  static Future<bool> importMessageTransaction(Transaction transaction) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      if (await _matchingMessage(txn, transaction) != null) return false;
+      await txn.insert('transactions', _transactionValues(transaction));
+      return true;
+    });
+  }
+
+  static Future<Map<String, Object?>?> _matchingMessage(
+    DatabaseExecutor db,
+    Transaction transaction, {
+    bool importedOnly = false,
+  }) async {
+    final date = transaction.date;
+    final minute = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      date.hour,
+      date.minute,
+    );
+    final rows = await db.query(
+      'transactions',
+      where:
+          'date >= ? AND date < ?${importedOnly ? " AND substr(id, 1, 7) = 'import_'" : ""}',
+      whereArgs: [
+        minute.millisecondsSinceEpoch,
+        minute.add(const Duration(minutes: 1)).millisecondsSinceEpoch,
+      ],
+    );
+    final body = SmsFingerprint.normalizedBody(transaction.rawMessage);
+    for (final row in rows) {
+      if (SmsFingerprint.normalizedBody(row['raw_message'] as String) == body) {
+        return row;
+      }
+    }
+    return null;
+  }
+
   /// Commits the result of an SMS scan as one unit. A message is never marked
   /// processed without its transaction, review item, or skip reason.
-  static Future<void> saveScanResults({
+  static Future<Set<String>> saveScanResults({
     required List<Transaction> transactions,
     required List<TransactionReview> reviews,
     required List<SmsProcessingRecord> records,
   }) async {
-    if (records.isEmpty) return;
+    if (records.isEmpty) return {};
     final db = await database;
-    await db.transaction((txn) async {
+    return db.transaction((txn) async {
+      final storedIds = <String>{};
+      final hasImports = (await txn.query(
+        'transactions',
+        columns: ['id'],
+        where: "substr(id, 1, 7) = 'import_'",
+        limit: 1,
+      )).isNotEmpty;
       final batch = txn.batch();
       for (final transaction in transactions) {
+        // A later SMS copy must not duplicate an alert already pasted by the user.
+        if (hasImports &&
+            await _matchingMessage(txn, transaction, importedOnly: true) !=
+                null) {
+          continue;
+        }
+        storedIds.add(transaction.id);
         batch.insert(
           'transactions',
           _transactionValues(transaction),
@@ -182,6 +239,7 @@ class LocalStorageService {
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       await batch.commit(noResult: true);
+      return storedIds;
     });
   }
 

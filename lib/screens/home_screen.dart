@@ -11,6 +11,7 @@ import '../widgets/new_transactions_review_sheet.dart';
 import '../widgets/tracking_onboarding_sheet.dart';
 import 'all_transactions_screen.dart';
 import 'settings_screen.dart';
+import 'import_message_screen.dart';
 import 'accounts_screen.dart';
 import 'spending_breakdown_screen.dart';
 import 'salary_cycle_screen.dart';
@@ -453,6 +454,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ImportMessageScreen()),
+              ),
+              icon: const Icon(Icons.content_paste),
+              label: const Text('Paste payment message'),
+            ),
           ),
           // Alerts banner
           if (_unreadAlertCount > 0)

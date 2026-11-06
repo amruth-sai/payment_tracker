@@ -279,11 +279,15 @@ class SmsService extends ChangeNotifier {
 
       Future<void> flushPending() async {
         if (pendingRecords.isEmpty) return;
-        await LocalStorageService.saveScanResults(
+        final storedIds = await LocalStorageService.saveScanResults(
           transactions: pendingTransactions,
           reviews: pendingReviews,
           records: pendingRecords,
         );
+        newTransactions.addAll(
+          pendingTransactions.where((tx) => storedIds.contains(tx.id)),
+        );
+        _ruleParsedCount += storedIds.length;
         pendingTransactions.clear();
         pendingReviews.clear();
         pendingRecords.clear();
@@ -316,9 +320,7 @@ class SmsService extends ChangeNotifier {
           isSent: item.isSent,
         );
         if (result.transaction != null) {
-          newTransactions.add(result.transaction!);
           pendingTransactions.add(result.transaction!);
-          _ruleParsedCount++;
         }
         if (result.review != null) pendingReviews.add(result.review!);
         pendingRecords.add(result.record);

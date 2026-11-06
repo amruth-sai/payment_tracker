@@ -10,6 +10,7 @@ import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 import '../services/transaction_export_service.dart';
 import 'merchant_rules_screen.dart';
+import 'import_message_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -57,6 +58,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.content_paste),
+                    title: const Text('Paste payment message'),
+                    subtitle: const Text(
+                      'Import a copied RCS or missing SMS alert',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ImportMessageScreen(),
+                        ),
+                      );
+                      if (mounted) await _loadCacheStats();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),

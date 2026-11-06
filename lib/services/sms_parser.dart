@@ -14,7 +14,14 @@ class SmsParser {
   // Recognized sender patterns used to identify financial messages.
   static const _knownSenders = [
     // Traditional Banks
-    'HDFCBK', 'SBIINB', 'ICICIB', 'AXISBK', 'KOTAKB', 'PNBSMS',
+    'HDFCBK',
+    'SBIINB',
+    'SBICARD',
+    'SBI CARD',
+    'ICICIB',
+    'AXISBK',
+    'KOTAKB',
+    'PNBSMS',
     'BOIIND', 'CANBNK', 'UNIONB', 'INDUSB', 'YESBK', 'IDBIBK',
     'HSBC', 'SCBNK', 'CITIBK', 'RBLBNK', 'FEDRAL',
     'BOBSMS', 'BOBONE', 'BOBBNK', // Bank of Baroda / OneCard
@@ -37,7 +44,7 @@ class SmsParser {
   // Recognized card issuers identify the payment channel, never the direction.
   static const _creditCardSenders = [
     'ONECARD', 'ONECRD', 'BOBONE', // OneCard (Bank of Baroda)
-    'SLICE', 'CREDCLUB',
+    'SLICE', 'CREDCLUB', 'SBICARD', 'SBI CARD',
   ];
 
   static bool isBankSms(String sender) {
@@ -389,8 +396,7 @@ class SmsParser {
       return PaymentSource.upi;
     }
     if (_creditCardSenders.any(s.contains) ||
-        lower.contains('credit card') ||
-        lower.contains('debit card') ||
+        RegExp(r'\b(?:credit|debit)\s+card\b').hasMatch(lower) ||
         lower.contains('card no')) {
       return PaymentSource.card;
     }
@@ -468,6 +474,11 @@ class SmsParser {
 
   static String? _extractAccountLast4(String body) {
     final patterns = [
+      // SBI and other issuers: "Credit Card ending 0042", including line breaks.
+      RegExp(
+        r'\bcard\s+(?:ending|ends)\s+(?:in\s+)?[xX*]*(\d{4})\b',
+        caseSensitive: false,
+      ),
       // Pattern 1: "a/c XX1234" or "A/C *1651" (standard bank format)
       RegExp(
         r'(?:a/c|account|ac)\s*(?:no\.?|num\.?)?\s*[xX*]+(\d{4})',
