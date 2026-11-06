@@ -49,154 +49,156 @@ class _TrackingOnboardingSheetState extends State<TrackingOnboardingSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.3,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle bar
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.3,
+                    ),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  borderRadius: BorderRadius.circular(2),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // Icon
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  shape: BoxShape.circle,
+                // Icon
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.history_toggle_off_rounded,
+                    size: 32,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
-                child: Icon(
-                  Icons.history_toggle_off_rounded,
-                  size: 32,
+                const SizedBox(height: 20),
+
+                // Title
+                Text(
+                  'Where should we start?',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Choose from when to track your transactions. '
+                  'We\'ll only consider messages after your selection.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+
+                // Option 1: Pick a date
+                _OptionCard(
+                  icon: Icons.calendar_today_rounded,
+                  title: 'Start from a date',
+                  subtitle: _selectedDate != null
+                      ? 'From ${DateFormat('dd MMM yyyy').format(_selectedDate!)}'
+                      : 'Only track transactions after a specific date',
+                  selected: _selectedOption == 0,
                   color: theme.colorScheme.primary,
+                  onTap: () => _pickDate(context),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 12),
 
-              // Title
-              Text(
-                'Where should we start?',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+                // Option 2: Track everything
+                _OptionCard(
+                  icon: Icons.all_inclusive_rounded,
+                  title: 'Track everything',
+                  subtitle: 'Consider all available transaction messages',
+                  selected: _selectedOption == 1,
+                  color: Colors.green,
+                  onTap: () {
+                    setState(() {
+                      _selectedOption = 1;
+                      _selectedDate = null;
+                    });
+                  },
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Choose from when to track your transactions. '
-                'We\'ll only consider messages after your selection.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
+                const SizedBox(height: 12),
 
-              // Option 1: Pick a date
-              _OptionCard(
-                icon: Icons.calendar_today_rounded,
-                title: 'Start from a date',
-                subtitle: _selectedDate != null
-                    ? 'From ${DateFormat('dd MMM yyyy').format(_selectedDate!)}'
-                    : 'Only track transactions after a specific date',
-                selected: _selectedOption == 0,
-                color: theme.colorScheme.primary,
-                onTap: () => _pickDate(context),
-              ),
-              const SizedBox(height: 12),
-
-              // Option 2: Track everything
-              _OptionCard(
-                icon: Icons.all_inclusive_rounded,
-                title: 'Track everything',
-                subtitle: 'Consider all available transaction messages',
-                selected: _selectedOption == 1,
-                color: Colors.green,
-                onTap: () {
-                  setState(() {
-                    _selectedOption = 1;
-                    _selectedDate = null;
-                  });
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // Quick presets row
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Text(
-                      'Quick:',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                // Quick presets row
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Quick:',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    _PresetChip(
-                      label: 'This month',
-                      onTap: () {
-                        final now = DateTime.now();
-                        setState(() {
-                          _selectedDate = DateTime(now.year, now.month, 1);
-                          _selectedOption = 0;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _PresetChip(
-                      label: 'Last 30 days',
-                      onTap: () {
-                        setState(() {
-                          _selectedDate = DateTime.now().subtract(
-                            const Duration(days: 30),
-                          );
-                          _selectedOption = 0;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _PresetChip(
-                      label: 'Last 90 days',
-                      onTap: () {
-                        setState(() {
-                          _selectedDate = DateTime.now().subtract(
-                            const Duration(days: 90),
-                          );
-                          _selectedOption = 0;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Continue button
-              FilledButton(
-                onPressed: _selectedOption == -1 ? null : _onContinue,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                      _PresetChip(
+                        label: 'This month',
+                        onTap: () {
+                          final now = DateTime.now();
+                          setState(() {
+                            _selectedDate = DateTime(now.year, now.month, 1);
+                            _selectedOption = 0;
+                          });
+                        },
+                      ),
+                      _PresetChip(
+                        label: 'Last 30 days',
+                        onTap: () {
+                          setState(() {
+                            _selectedDate = DateTime.now().subtract(
+                              const Duration(days: 30),
+                            );
+                            _selectedOption = 0;
+                          });
+                        },
+                      ),
+                      _PresetChip(
+                        label: 'Last 90 days',
+                        onTap: () {
+                          setState(() {
+                            _selectedDate = DateTime.now().subtract(
+                              const Duration(days: 90),
+                            );
+                            _selectedOption = 0;
+                          });
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                const SizedBox(height: 24),
+
+                // Continue button
+                FilledButton(
+                  onPressed: _selectedOption == -1 ? null : _onContinue,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

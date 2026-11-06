@@ -7,6 +7,7 @@ class SummaryCard extends StatelessWidget {
   final double totalIn;
   final double totalOut;
   final int txCount;
+  final String? title;
   final String? subtitle; // Optional period label shown in the card header
 
   const SummaryCard({
@@ -15,6 +16,7 @@ class SummaryCard extends StatelessWidget {
     required this.totalOut,
     required this.txCount,
     this.subtitle,
+    this.title,
   });
 
   @override
@@ -40,8 +42,19 @@ class SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          if (title != null) ...[
+            Text(
+              title!,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 12,
+            runSpacing: 8,
             children: [
               Text(
                 subtitle ?? 'This Period',
@@ -91,26 +104,37 @@ class SummaryCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _FlowTile(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tiles = [
+                _FlowTile(
                   label: 'Money In',
                   amount: totalIn,
                   color: const Color(0xFF1DB954),
                   icon: Icons.arrow_downward_rounded,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _FlowTile(
+                _FlowTile(
                   label: 'Money Out',
                   amount: totalOut,
                   color: const Color(0xFFE53935),
                   icon: Icons.arrow_upward_rounded,
                 ),
-              ),
-            ],
+              ];
+              if (constraints.maxWidth < 320 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 20) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [tiles[0], const SizedBox(height: 12), tiles[1]],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: tiles[0]),
+                  const SizedBox(width: 12),
+                  Expanded(child: tiles[1]),
+                ],
+              );
+            },
           ),
         ],
       ),

@@ -10,6 +10,7 @@ import '../services/local_storage_service.dart';
 import '../services/sms_service.dart';
 import '../services/transaction_export_service.dart';
 import 'merchant_rules_screen.dart';
+import 'tracking_settings_screen.dart';
 import 'import_message_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -58,6 +59,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.history_toggle_off_outlined),
+                    title: const Text('Tracking Settings'),
+                    subtitle: const Text(
+                      'Choose where your transaction history starts',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TrackingSettingsScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.content_paste),

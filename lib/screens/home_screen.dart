@@ -11,25 +11,25 @@ import '../widgets/new_transactions_review_sheet.dart';
 import '../widgets/tracking_onboarding_sheet.dart';
 import 'all_transactions_screen.dart';
 import 'settings_screen.dart';
-import 'import_message_screen.dart';
-import 'accounts_screen.dart';
-import 'spending_breakdown_screen.dart';
-import 'salary_cycle_screen.dart';
-import 'category_breakdown_screen.dart';
-import 'budget_screen.dart';
-import 'spending_heatmap_screen.dart';
-import 'merchant_rankings_screen.dart';
-import 'emi_tracker_screen.dart';
 import 'alerts_screen.dart';
-import 'categories_screen.dart';
-import 'tracking_settings_screen.dart';
-import 'transfer_management_screen.dart';
-import 'ignored_transactions_screen.dart';
 import 'transaction_review_screen.dart';
 import '../services/local_storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.isActive = true,
+    this.refreshToken = 0,
+    this.onSeeAll,
+    this.onOpenSettings,
+    this.onOpenReview,
+  });
+
+  final bool isActive;
+  final int refreshToken;
+  final ValueChanged<int>? onSeeAll;
+  final VoidCallback? onOpenSettings;
+  final VoidCallback? onOpenReview;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -39,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedFilter = 0; // 0=All, 1=In, 2=Out
   final _filters = ['All', 'Money In', 'Money Out'];
   int _unreadAlertCount = 0;
+  int _reviewCount = 0;
+  final _scrollController = ScrollController();
   String? _selectedBank; // null = All Banks
 
   @override
@@ -56,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
       await sms.loadTransactions();
-      _loadAlertCount();
+      _loadHomeCounts();
       // Feature 6: show review popup if new transactions were found
       if (mounted && sms.newlyFoundTransactions.isNotEmpty) {
         await NewTransactionsReviewSheet.show(
@@ -71,16 +73,69 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _loadAlertCount() async {
-    final unread = await LocalStorageService.getUnreadAlerts();
-    if (mounted) {
-      setState(() => _unreadAlertCount = unread.length);
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((!oldWidget.isActive && widget.isActive) ||
+        oldWidget.refreshToken != widget.refreshToken) {
+      _loadHomeCounts();
     }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadHomeCounts() async {
+    try {
+      final counts = await Future.wait<int>([
+        LocalStorageService.getUnreadAlerts().then((rows) => rows.length),
+        LocalStorageService.getTransactionReviews().then((rows) => rows.length),
+      ]);
+      if (mounted) {
+        setState(() {
+          _unreadAlertCount = counts[0];
+          _reviewCount = counts[1];
+        });
+      }
+    } catch (_) {
+      // Keep the last known counts if the local read cannot complete.
+    }
+  }
+
+  Future<void> _openAlerts() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertsScreen()),
+    );
+    if (mounted) await _loadHomeCounts();
+  }
+
+  Future<void> _scanMessages() async {
+    await context.read<SmsService>().loadTransactions();
+    if (mounted) await _loadHomeCounts();
+  }
+
+  Future<void> _openReview() async {
+    if (widget.onOpenReview != null) {
+      widget.onOpenReview!();
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TransactionReviewScreen()),
+    );
+    if (!mounted) return;
+    await context.read<SmsService>().reloadFromCache();
+    if (mounted) await _loadHomeCounts();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: _buildAppBar(context),
       body: Consumer<SmsService>(
         builder: (context, sms, _) {
           if (sms.isLoading && sms.transactions.isEmpty) {
@@ -108,27 +163,26 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           if (sms.error != null && sms.transactions.isEmpty) {
-            return _ErrorView(
-              message: sms.error!,
-              onRetry: () => sms.loadTransactions(),
-            );
+            return _ErrorView(message: sms.error!, onRetry: _scanMessages);
           }
 
           final filtered = _getFiltered(sms);
           final recent = filtered.take(5).toList();
 
           return RefreshIndicator(
-            onRefresh: () => sms.loadTransactions(),
+            onRefresh: _scanMessages,
             child: CustomScrollView(
+              key: const PageStorageKey('home-scroll'),
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                _buildAppBar(context),
                 if (sms.error != null)
                   SliverToBoxAdapter(
                     child: ListTile(
                       leading: const Icon(Icons.info_outline),
                       title: Text(sms.error!),
                       trailing: TextButton(
-                        onPressed: () => sms.loadTransactions(),
+                        onPressed: _scanMessages,
                         child: const Text('Retry'),
                       ),
                     ),
@@ -145,15 +199,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                SliverToBoxAdapter(child: _buildQuickActions()),
                 SliverToBoxAdapter(
                   child: SummaryCard(
+                    title: sms.currentCycleLabel,
                     totalIn: sms.currentCycleCredits,
                     totalOut: sms.currentCycleDebits,
                     txCount: sms.currentCycleTransactions.length,
                     subtitle: sms.currentCycleSubtitle,
                   ),
                 ),
+                if (_unreadAlertCount > 0 || _reviewCount > 0)
+                  SliverToBoxAdapter(child: _buildAttentionShortcuts()),
                 SliverToBoxAdapter(child: _buildFilterRow(sms)),
                 if (sms.transactions.isEmpty)
                   const SliverFillRemaining(
@@ -172,14 +228,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           TextButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AllTransactionsScreen(
-                                  filter: _selectedFilter,
-                                ),
-                              ),
-                            ),
+                            onPressed: () {
+                              if (widget.onSeeAll != null) {
+                                widget.onSeeAll!(_selectedFilter);
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AllTransactionsScreen(
+                                      filter: _selectedFilter,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                             child: const Text('See All'),
                           ),
                         ],
@@ -213,314 +275,77 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
-    return SliverAppBar(
-      floating: true,
-      snap: true,
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
       title: const Text(
         'Payment Tracker',
-        style: TextStyle(fontWeight: FontWeight.w800),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontWeight: FontWeight.w700),
       ),
       actions: [
         IconButton(
+          tooltip: 'Scan messages',
           icon: const Icon(Icons.refresh_rounded),
-          onPressed: () => context.read<SmsService>().loadTransactions(),
+          onPressed: _scanMessages,
         ),
-        Stack(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () async {
+        IconButton(
+          tooltip: 'Alerts',
+          icon: Badge(
+            isLabelVisible: _unreadAlertCount > 0,
+            label: Text(_unreadAlertCount > 9 ? '9+' : '$_unreadAlertCount'),
+            child: const Icon(Icons.notifications_outlined),
+          ),
+          onPressed: _openAlerts,
+        ),
+        IconButton(
+          tooltip: 'Settings',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed:
+              widget.onOpenSettings ??
+              () async {
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AlertsScreen()),
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 );
-                _loadAlertCount();
+                if (!context.mounted) return;
+                await context.read<SmsService>().loadTransactions();
+                if (mounted) await _loadHomeCounts();
               },
-            ),
-            if (_unreadAlertCount > 0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    _unreadAlertCount > 9 ? '9+' : '$_unreadAlertCount',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.swap_horiz_rounded),
-          tooltip: 'Transfer Management',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const TransferManagementScreen(),
-              ),
-            );
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-            // Refresh cached statistics after settings changes.
-            if (context.mounted) {
-              context.read<SmsService>().loadTransactions();
-            }
-          },
-        ),
-        const SizedBox(width: 4),
       ],
     );
   }
 
-  Widget _buildQuickActions() {
+  Widget _buildAttentionShortcuts() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        children: [
-          // Row 1 - Original buttons
-          Row(
-            children: [
-              _QuickActionButton(
-                icon: Icons.account_balance_wallet,
-                label: 'Accounts',
-                color: Colors.blue,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AccountsScreen()),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Column(
+          children: [
+            if (_reviewCount > 0)
+              ListTile(
+                leading: const Icon(Icons.rule_folder_outlined),
+                title: Text(
+                  '$_reviewCount ${_reviewCount == 1 ? 'transaction needs' : 'transactions need'} review',
                 ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openReview,
               ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.pie_chart,
-                label: 'Breakdown',
-                color: Colors.purple,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SpendingBreakdownScreen(),
-                  ),
+            if (_reviewCount > 0 && _unreadAlertCount > 0)
+              const Divider(height: 1),
+            if (_unreadAlertCount > 0)
+              ListTile(
+                leading: const Icon(Icons.notifications_outlined),
+                title: Text(
+                  '$_unreadAlertCount unread ${_unreadAlertCount == 1 ? 'alert' : 'alerts'}',
                 ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openAlerts,
               ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.calendar_month,
-                label: 'Salary',
-                color: Colors.green,
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SalaryCycleScreen(),
-                    ),
-                  );
-                  if (mounted) {
-                    context.read<SmsService>().reloadFromCache();
-                  }
-                },
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.category,
-                label: 'Breakdown',
-                color: Colors.teal,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CategoryBreakdownScreen(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Row 2 - New feature buttons
-          Row(
-            children: [
-              _QuickActionButton(
-                icon: Icons.savings,
-                label: 'Budgets',
-                color: Colors.orange,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BudgetScreen()),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.grid_on,
-                label: 'Heatmap',
-                color: Colors.red,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SpendingHeatmapScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.bar_chart,
-                label: 'Merchants',
-                color: Colors.indigo,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const MerchantRankingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.event_repeat,
-                label: 'EMIs',
-                color: Colors.amber,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const EMITrackerScreen()),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Row 3 - New feature buttons (Features 3 & 4)
-          Row(
-            children: [
-              _QuickActionButton(
-                icon: Icons.label_outline,
-                label: 'Categories',
-                color: Colors.teal,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CategoriesScreen()),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.history_toggle_off_outlined,
-                label: 'Tracking',
-                color: Colors.blueGrey,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const TrackingSettingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.visibility_off_outlined,
-                label: 'Ignored',
-                color: Colors.orange,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const IgnoredTransactionsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _QuickActionButton(
-                icon: Icons.rule_folder_outlined,
-                label: 'Review',
-                color: Colors.deepOrange,
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TransactionReviewScreen(),
-                    ),
-                  );
-                  if (mounted) {
-                    context.read<SmsService>().reloadFromCache();
-                  }
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ImportMessageScreen()),
-              ),
-              icon: const Icon(Icons.content_paste),
-              label: const Text('Paste payment message'),
-            ),
-          ),
-          // Alerts banner
-          if (_unreadAlertCount > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: InkWell(
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AlertsScreen()),
-                  );
-                  _loadAlertCount();
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.orange.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.notifications_active,
-                        color: Colors.orange,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$_unreadAlertCount unread alert${_unreadAlertCount > 1 ? 's' : ''}',
-                        style: const TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const Spacer(),
-                      const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 14,
-                        color: Colors.orange,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -545,11 +370,13 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Type filters (All / Money In / Money Out)
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
             children: List.generate(_filters.length, (i) {
               final selected = i == _selectedFilter;
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: EdgeInsets.zero,
                 child: FilterChip(
                   label: Text(_filters[i]),
                   selected: selected,
@@ -562,7 +389,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             // Bank filter chips (horizontal scroll)
             SizedBox(
-              height: 38,
+              height: 24 + MediaQuery.textScalerOf(context).scale(24),
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
@@ -711,55 +538,6 @@ class _ErrorView extends StatelessWidget {
               label: const Text('Try Again'),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickActionButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
         ),
       ),
     );

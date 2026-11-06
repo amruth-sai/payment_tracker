@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/sms_service.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_shell_screen.dart';
 
 void main() {
   runApp(
@@ -32,7 +32,7 @@ class PaymentTrackerApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF2563EB),
         brightness: Brightness.dark,
       ),
-      home: const HomeScreen(),
+      home: const MainShellScreen(),
     );
   }
 }

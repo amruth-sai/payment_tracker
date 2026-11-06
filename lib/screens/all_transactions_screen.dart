@@ -17,7 +17,26 @@ import 'transaction_window_category_screen.dart';
 import 'categories_screen.dart';
 
 class AllTransactionsScreen extends StatefulWidget {
-  const AllTransactionsScreen({super.key, this.filter = 0});
+  const AllTransactionsScreen({
+    super.key,
+    this.filter = 0,
+    this.filterRequest = 0,
+    this.refreshToken = 0,
+    this.isActive = true,
+    this.onBackToHome,
+    this.toolsMenuBuilder,
+    this.settingsAction,
+  });
+  final int filterRequest;
+  final int refreshToken;
+  final bool isActive;
+  final VoidCallback? onBackToHome;
+  final Widget Function(
+    VoidCallback manageCategories,
+    VoidCallback categorizeWindow,
+  )?
+  toolsMenuBuilder;
+  final Widget? settingsAction;
   final int filter;
   @override
   State<AllTransactionsScreen> createState() => _AllTransactionsScreenState();
@@ -128,13 +147,33 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     _loadCycles();
   }
 
-  Future<void> _loadCycles() async {
+  @override
+  void didUpdateWidget(covariant AllTransactionsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((!oldWidget.isActive && widget.isActive) ||
+        oldWidget.refreshToken != widget.refreshToken) {
+      _loadCycles(preserveSelection: true);
+    }
+    if (oldWidget.filter != widget.filter ||
+        oldWidget.filterRequest != widget.filterRequest) {
+      _tabs.animateTo(widget.filter);
+    }
+  }
+
+  Future<void> _loadCycles({bool preserveSelection = false}) async {
     try {
       final cycles = await LocalStorageService.getAllSalaryCycles();
       if (mounted) {
         setState(() {
           _cycles = cycles;
-          _cycleId = cycles.where((cycle) => cycle.isCurrent).firstOrNull?.id;
+          if (preserveSelection) {
+            if (_cycleId != null &&
+                !cycles.any((cycle) => cycle.id == _cycleId)) {
+              _cycleId = null;
+            }
+          } else {
+            _cycleId = cycles.where((cycle) => cycle.isCurrent).firstOrNull?.id;
+          }
         });
       }
     } catch (_) {
@@ -234,6 +273,29 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     );
   }
 
+  Future<void> _manageCategories() async {
+    final sms = context.read<SmsService>();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+    );
+    if (!mounted) return;
+    setState(
+      () => _categories.removeWhere(
+        (id) => id.isNotEmpty && !sms.categoriesById.containsKey(id),
+      ),
+    );
+  }
+
+  void _categorizeWindow() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const TransactionWindowCategoryScreen(),
+      ),
+    );
+  }
+
   void _tabChanged() {
     if (mounted) setState(() {});
   }
@@ -325,9 +387,16 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
       _tags,
     );
     return PopScope(
-      canPop: !_selecting && !_assigningCategory,
+      canPop:
+          !widget.isActive ||
+          (!_selecting && !_assigningCategory && widget.onBackToHome == null),
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && !_assigningCategory) _exitSelection();
+        if (didPop || !widget.isActive || _assigningCategory) return;
+        if (_selecting) {
+          _exitSelection();
+        } else {
+          widget.onBackToHome?.call();
+        }
       },
       child: Scaffold(
         appBar: AppBar(
@@ -339,38 +408,29 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                 )
               : null,
           title: Text(
-            _selecting ? '${_selectedIds.length} selected' : 'All Transactions',
+            _selecting
+                ? '${_selectedIds.length} selected'
+                : widget.onBackToHome == null
+                ? 'All Transactions'
+                : 'Activity',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           actions: [
             if (!_selecting) ...[
-              IconButton(
-                tooltip: 'Manage categories',
-                icon: const Icon(Icons.category_outlined),
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CategoriesScreen()),
-                  );
-                  if (!mounted) return;
-                  setState(
-                    () => _categories.removeWhere(
-                      (id) =>
-                          id.isNotEmpty && !sms.categoriesById.containsKey(id),
-                    ),
-                  );
-                },
-              ),
-              IconButton(
-                tooltip: 'Categorize a date or transaction window',
-                icon: const Icon(Icons.date_range_outlined),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const TransactionWindowCategoryScreen(),
-                  ),
+              if (widget.toolsMenuBuilder != null)
+                widget.toolsMenuBuilder!(_manageCategories, _categorizeWindow)
+              else ...[
+                IconButton(
+                  tooltip: 'Manage categories',
+                  icon: const Icon(Icons.category_outlined),
+                  onPressed: _manageCategories,
                 ),
-              ),
+                IconButton(
+                  tooltip: 'Categorize a date or transaction window',
+                  icon: const Icon(Icons.date_range_outlined),
+                  onPressed: _categorizeWindow,
+                ),
+              ],
             ],
             PopupMenuButton<String>(
               enabled: !_assigningCategory,
@@ -395,6 +455,8 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
                 ),
               ],
             ),
+            if (!_selecting && widget.settingsAction != null)
+              widget.settingsAction!,
           ],
           bottom: TabBar(
             controller: _tabs,
