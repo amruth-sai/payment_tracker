@@ -80,7 +80,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                 : AlertSeverity.warning,
             title: '${status.category.emoji} ${status.category.name} budget',
             message:
-                '${status.percentage.toStringAsFixed(0)}% used - ₹${status.spent.toStringAsFixed(0)} of ₹${status.budget.monthlyLimit.toStringAsFixed(0)}',
+                '${status.percentage.toStringAsFixed(0)}% used (net spent) - ₹${status.spent.toStringAsFixed(0)} of ₹${status.budget.monthlyLimit.toStringAsFixed(0)}',
           ),
         )
         .toList();

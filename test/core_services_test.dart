@@ -703,7 +703,7 @@ void main() {
       );
     });
 
-    test('lists only uncovered spending inside the selected period', () {
+    test('lists uncovered debits and credits inside the selected period', () {
       final firstDay = DateTime(2026, 10, 1);
       final lastDay = DateTime(2026, 10, 31, 23, 59, 59, 999);
       final rows = [
@@ -730,7 +730,7 @@ void main() {
         start: firstDay,
         end: lastDay,
       );
-      expect(uncovered.map((tx) => tx.id), ['uncategorized', 'rent']);
+      expect(uncovered.map((tx) => tx.id), ['uncategorized', 'rent', 'credit']);
     });
   });
 }

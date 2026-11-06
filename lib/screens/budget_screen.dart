@@ -399,7 +399,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Widget _buildOutsideBudgetsCard() {
     final transactions = _outsideBudgetTransactions;
-    final total = transactions.fold<double>(0, (sum, tx) => sum + tx.amount);
+    final total = BudgetService.netSpending(transactions);
     final categoriesById = _categoriesById;
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -415,9 +415,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
             const SizedBox(height: 4),
             Text(
               transactions.isEmpty
-                  ? 'No uncovered spending in ${_activePeriod.label}.'
-                  : '${transactions.length} spending transactions · '
-                        '\u20B9${_fmt(total)} in ${_activePeriod.label}',
+                  ? 'No uncovered transactions in ${_activePeriod.label}.'
+                  : '${transactions.length} transactions · '
+                        'Net spent: \u20B9${_fmt(total)} in ${_activePeriod.label}',
             ),
             if (transactions.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -506,22 +506,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       ],
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '\u20B9${_fmt(status.spent)} / \u20B9${_fmt(status.budget.monthlyLimit)}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                        ),
-                      ),
-                      Text(
-                        '${status.percentage.toStringAsFixed(0)}% used',
-                        style: TextStyle(fontSize: 11, color: color),
-                      ),
-                    ],
-                  ),
                   PopupMenuButton<String>(
                     onSelected: (value) async {
                       if (value == 'edit') {
@@ -543,6 +527,30 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ],
+              ),
+              Text(
+                'Net spent: \u20B9${_fmt(status.spent)} / \u20B9${_fmt(status.budget.monthlyLimit)}',
+                key: ValueKey('budget-net-${category.id}'),
+                style: TextStyle(fontWeight: FontWeight.bold, color: color),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 16,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    'Debits: \u20B9${_fmt(status.debits)}',
+                    key: ValueKey('budget-debits-${category.id}'),
+                  ),
+                  Text(
+                    'Credits: \u20B9${_fmt(status.credits)}',
+                    key: ValueKey('budget-credits-${category.id}'),
+                  ),
+                  Text(
+                    '${status.percentage.toStringAsFixed(0)}% used',
+                    style: TextStyle(color: color),
                   ),
                 ],
               ),
@@ -948,7 +956,7 @@ class _BudgetCategoryTransactionsSheetState
     final end = widget.period.end;
     return transactions
         .where((tx) => !tx.date.isBefore(start) && !tx.date.isAfter(end))
-        .where(BudgetService.isBudgetExpense)
+        .where(BudgetService.isBudgetTransaction)
         .where((tx) {
           final categoryId = BudgetService.categoryIdForTransaction(tx);
           return categoryId == _categoryId;
@@ -957,7 +965,11 @@ class _BudgetCategoryTransactionsSheetState
       ..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  double get _totalSpent => _transactions.totalAmount;
+  double get _totalSpent => BudgetService.netSpending(_transactions);
+  double get _totalDebits =>
+      _transactions.where((tx) => tx.isDebit).totalAmount;
+  double get _totalCredits =>
+      _transactions.where((tx) => tx.isCredit).totalAmount;
 
   String _fmt(double value) => FormatUtils.formatAmount(value);
 
@@ -1040,32 +1052,51 @@ class _BudgetCategoryTransactionsSheetState
                   color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _SummaryStat(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth < 300
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 16) / 2;
+                    final stats = [
+                      _SummaryStat(
+                        label: 'Debits',
+                        value: _isLoading
+                            ? '...'
+                            : '\u20B9${_fmt(_totalDebits)}',
+                      ),
+                      _SummaryStat(
+                        label: 'Credits',
+                        value: _isLoading
+                            ? '...'
+                            : '\u20B9${_fmt(_totalCredits)}',
+                      ),
+                      _SummaryStat(
+                        label: 'Net spent',
+                        value: _isLoading
+                            ? '...'
+                            : '\u20B9${_fmt(_totalSpent)}',
+                      ),
+                      _SummaryStat(
+                        label: 'Budget',
+                        value:
+                            '\u20B9${_fmt(widget.status.budget.monthlyLimit)}',
+                      ),
+                      _SummaryStat(
                         label: 'Transactions',
                         value: _isLoading
                             ? '...'
                             : _transactions.length.toString(),
                       ),
-                    ),
-                    Expanded(
-                      child: _SummaryStat(
-                        label: 'Spent',
-                        value: _isLoading
-                            ? '...'
-                            : '\u20B9${_fmt(_totalSpent)}',
-                      ),
-                    ),
-                    Expanded(
-                      child: _SummaryStat(
-                        label: 'Budget',
-                        value:
-                            '\u20B9${_fmt(widget.status.budget.monthlyLimit)}',
-                      ),
-                    ),
-                  ],
+                    ];
+                    return Wrap(
+                      spacing: 16,
+                      runSpacing: 12,
+                      children: [
+                        for (final stat in stats)
+                          SizedBox(width: width, child: stat),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

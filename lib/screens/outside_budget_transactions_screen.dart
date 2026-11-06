@@ -215,7 +215,7 @@ class _OutsideBudgetTransactionsScreenState
                 transaction.sender.toLowerCase().contains(query) ||
                 _categoryLabel(transaction).toLowerCase().contains(query);
           }).toList();
-    final total = outside.fold<double>(0, (sum, tx) => sum + tx.amount);
+    final total = BudgetService.netSpending(outside);
     final currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 
     return Scaffold(
@@ -250,12 +250,12 @@ class _OutsideBudgetTransactionsScreenState
                         const SizedBox(height: 4),
                       ],
                       Text(
-                        '${outside.length} spending transactions · '
-                        '${currency.format(total)}',
+                        '${outside.length} transactions · '
+                        'Net spent: ${currency.format(total)}',
                       ),
                       const SizedBox(height: 4),
                       const Text(
-                        'Income, ignored transactions, and transfers are excluded. '
+                        'Credits reduce net spending. Ignored transactions and transfers are excluded. '
                         'Choose a category to organize this payment and include it in its budget.',
                       ),
                       const SizedBox(height: 12),
@@ -276,8 +276,8 @@ class _OutsideBudgetTransactionsScreenState
                           child: Text(
                             outside.isEmpty
                                 ? _scope == _CoverageScope.period
-                                      ? 'All spending in this period has a budget.'
-                                      : 'All tracked spending has a budget.'
+                                      ? 'All transactions in this period have a budget.'
+                                      : 'All tracked transactions have a budget.'
                                 : 'No transactions match your search.',
                           ),
                         )
@@ -305,7 +305,7 @@ class _OutsideBudgetTransactionsScreenState
                                         '${_categoryLabel(tx)}',
                                       ),
                                       trailing: Text(
-                                        currency.format(tx.amount),
+                                        '${tx.isCredit ? '+' : '-'}${currency.format(tx.amount)}',
                                       ),
                                       onTap: () => TransactionDetailSheet.show(
                                         context,

@@ -15,9 +15,17 @@ class BudgetService {
 
   static String? categoryIdForTransaction(Transaction transaction) =>
       transaction.categoryId;
-  static bool isBudgetExpense(Transaction transaction) => transaction.isExpense;
+  static bool isBudgetTransaction(Transaction transaction) =>
+      transaction.isExpense || transaction.isIncome;
 
-  /// Spending that has no budget for its effective category.
+  /// Positive means net spending; credits can make this negative.
+  static double netSpending(Iterable<Transaction> transactions) => Money.sum(
+    transactions
+        .where(isBudgetTransaction)
+        .map((tx) => tx.isDebit ? tx.amount : -tx.amount),
+  );
+
+  /// Debits and credits with no budget for their category.
   static List<Transaction> outsideBudgetTransactions({
     required Iterable<Transaction> transactions,
     required Set<String> budgetCategoryIds,
@@ -25,7 +33,7 @@ class BudgetService {
     DateTime? end,
   }) {
     return transactions
-        .where(isBudgetExpense)
+        .where(isBudgetTransaction)
         .where((tx) => start == null || !tx.date.isBefore(start))
         .where((tx) => end == null || !tx.date.isAfter(end))
         .where(
@@ -60,18 +68,18 @@ class BudgetService {
   static Map<String, double> _getMonthlyAverages(
     List<Transaction> transactions,
   ) {
-    final debits = transactions.where(isBudgetExpense).toList();
-    if (debits.isEmpty) return {};
+    final included = transactions.where(isBudgetTransaction).toList();
+    if (included.isEmpty) return {};
 
     final monthlyTotals = <String, Map<String, double>>{};
-    for (final tx in debits) {
+    for (final tx in included) {
       final monthKey = '${tx.date.year}-${tx.date.month}';
       final categoryId = categoryIdForTransaction(tx);
       if (categoryId == null) continue;
       monthlyTotals.putIfAbsent(monthKey, () => {});
       monthlyTotals[monthKey]![categoryId] = Money.sum([
         monthlyTotals[monthKey]![categoryId] ?? 0,
-        tx.amount,
+        tx.isDebit ? tx.amount : -tx.amount,
       ]);
     }
 
@@ -110,14 +118,13 @@ class BudgetService {
     );
     final categoriesById = await loadBudgetCategories();
 
-    final categorySpent = <String, double>{};
-    for (final tx in currentTransactions.where(isBudgetExpense)) {
+    final categoryDebits = <String, double>{};
+    final categoryCredits = <String, double>{};
+    for (final tx in currentTransactions.where(isBudgetTransaction)) {
       final categoryId = categoryIdForTransaction(tx);
       if (categoryId == null) continue;
-      categorySpent[categoryId] = Money.sum([
-        categorySpent[categoryId] ?? 0,
-        tx.amount,
-      ]);
+      final totals = tx.isDebit ? categoryDebits : categoryCredits;
+      totals[categoryId] = Money.sum([totals[categoryId] ?? 0, tx.amount]);
     }
 
     final result =
@@ -126,15 +133,11 @@ class BudgetService {
               final category = categoriesById[budget.categoryId];
               if (category == null) return null;
 
-              final spent = categorySpent[budget.categoryId] ?? 0;
-              final percentage = budget.monthlyLimit > 0
-                  ? (spent / budget.monthlyLimit * 100)
-                  : 0.0;
               return BudgetStatus(
                 budget: budget,
                 category: category,
-                spent: spent,
-                percentage: percentage,
+                debits: categoryDebits[budget.categoryId] ?? 0,
+                credits: categoryCredits[budget.categoryId] ?? 0,
               );
             })
             .whereType<BudgetStatus>()
@@ -211,20 +214,26 @@ class BudgetService {
 class BudgetStatus {
   final Budget budget;
   final AppCategory category;
-  final double spent;
-  final double percentage;
+  final double debits;
+  final double credits;
 
   BudgetStatus({
     required this.budget,
     required this.category,
-    required this.spent,
-    required this.percentage,
+    required this.debits,
+    required this.credits,
   });
+
+  /// Existing budget consumers use spent as the net debit-minus-credit amount.
+  double get spent => Money.sum([debits, -credits]);
+  double get percentage => spent <= 0 || budget.monthlyLimit <= 0
+      ? 0.0
+      : spent / budget.monthlyLimit * 100;
 
   bool get isOverBudget => percentage >= 100;
   bool get isWarning => percentage >= 80 && percentage < 100;
   bool get isHealthy => percentage < 80;
 
   double get remaining =>
-      (budget.monthlyLimit - spent).clamp(0, budget.monthlyLimit);
+      Money.sum([budget.monthlyLimit, -spent]).clamp(0, double.infinity);
 }
