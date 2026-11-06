@@ -10,7 +10,7 @@ Audit baseline: local commit `3ce0c0f` (net-budget calculation update), followin
 | Home > Breakdown (pie icon) | Insights > Spending Breakdown | SpendingBreakdownScreen |
 | Home > Salary | Plan > Salary Cycles | SalaryCycleScreen |
 | Home > Breakdown (category icon) | Insights > Category Breakdown | CategoryBreakdownScreen |
-| Home > Budgets | Plan > Budgets | BudgetScreen |
+| Home > Budgets | Budgets bottom tab | BudgetScreen |
 | Home > Heatmap | Insights > Spending Heatmap | SpendingHeatmapScreen |
 | Home > Merchants | Insights > Merchant Rankings | MerchantRankingsScreen |
 | Home > EMIs | Plan > EMI Tracker | EMITrackerScreen |
@@ -21,7 +21,7 @@ Audit baseline: local commit `3ce0c0f` (net-budget calculation update), followin
 | Home > Paste payment message | Activity > Activity tools > Paste Payment Message; existing Settings entry | ImportMessageScreen |
 | Home toolbar > Transfer Management | Activity > Activity tools > Transfer Management | TransferManagementScreen |
 | Home toolbar/banner > Alerts | Home toolbar/banner > Alerts | AlertsScreen |
-| Home toolbar > Settings | Top-right Settings icon on all four tabs | SettingsScreen |
+| Home toolbar > Settings | Top-right Settings icon on all five tabs | SettingsScreen |
 | Home toolbar/pull-to-refresh/retry > Scan | Home toolbar/pull-to-refresh/retry > Scan | SmsService.loadTransactions |
 | Home > See All with selected direction | Activity with the requested All / Money In / Money Out direction | AllTransactionsScreen |
 | Home current-cycle filters / bank selection / recent rows | Home current-cycle filters / bank selection / recent rows | Existing current-cycle calculations and card handlers |
@@ -33,20 +33,20 @@ Audit baseline: local commit `3ce0c0f` (net-budget calculation update), followin
 |---|---|---|
 | All Transactions | Search; bank/category/tag/cycle chips; All/In/Out tabs; date/amount sorting; filtered credit/debit/net/internal transfer totals; long-press selection; select/deselect all; assign-category picker; category setup; date/transaction-window categorization; detail sheet; swipe ignore/undo and direction correction; transfer detail and unlink | Activity |
 | Transaction detail sheet | Merchant editing and rule creation; category picker and management; note add/edit/clear; tag add/edit/clear; salary marking; debit/credit correction; ignored state; raw-message expansion; linked-transfer detail/unmerge; sheet dismissal | Home or Activity transaction row, or existing report/budget drill-down |
-| Review Inbox | Refresh; choose credit/debit; ignore; choose/create category; merchant-rule dialog including matching, merchant, category and tag; cancel/save | Activity > Activity tools > Review Inbox |
+| Review Inbox | Refresh; choose credit/debit; ignore; top Ignore all button (restorable, with progress and retry for failed items); choose/create category; merchant-rule dialog including matching, merchant, category and tag; cancel/save | Activity > Activity tools > Review Inbox |
 | Ignored Transactions | Refresh; restore; transaction details; Ignored Messages toolbar entry | Activity > Activity tools > Ignored Transactions |
 | Ignored Messages | Ignored-review restore; retained payment-like skipped messages; enter amount/send to review; recheck skipped messages; refresh; tabs and explanatory counts | Activity > Activity tools > Skipped / Ignored Messages, or Ignored Transactions toolbar |
 | Transfer Management | Suggestions/Merged tabs; individual merge; Merge all; dismiss and Undo; merged detail; unmerge/swipe; refresh suggestions; integrity check, report and repair dialogs | Activity > Activity tools > Transfer Management |
 | Paste Payment Message | Explicit clipboard paste; editable sender/body; original date and time pickers; preview; save; duplicate status; import another; Back | Activity > Activity tools > Paste Payment Message; Settings original entry |
 | Spending Breakdown | Period selector; account/source summary and chart; expandable account cards; account transaction sheet; transaction details | Insights > Spending Breakdown |
 | Category Breakdown | Period selector; pie chart; category list; category transaction sheet and details | Insights > Category Breakdown |
-| Spending Heatmap | Previous/next month; calendar/day selection; legend and month summary; day transaction sheet and details | Insights > Spending Heatmap |
+| Spending Heatmap | Search; All/Money In/Money Out; multi-bank/category/tag chips; salary-cycle intersection; optional internal transfers; Reset and refresh; previous/next month; filtered calendar colors, statistics and day transaction sheet | Insights > Spending Heatmap |
 | Merchant Rankings | Period selector; ranking chart and merchant list | Insights > Merchant Rankings |
 | Accounts | Add/edit account dialogs; account type/name/bank/last-four fields; save/cancel; delete confirmation; grouped account list | Plan > Accounts |
 | Salary Cycles | Candidate salary marking/unmarking; generation/regeneration; salary-day picker; setup guidance; cycle detail and credit/debit transaction lists; transaction detail; salary-month closeout | Plan > Salary Cycles |
 | Salary Month Closeout | Cycle picker; monthly closeout summary and transaction/category sections | Plan > Salary Cycles > closeout |
-| Budgets | Period chips; income dialog; spending suggestions and apply; add/edit/delete budget; category creation; per-category transaction sheet; debit/credit/net and remaining; Outside Budgets | Plan > Budgets |
-| Outside Budgets | Selected period/all-time selector; search; signed transaction amounts; category assignment sheet; category management; details; return refresh | Plan > Budgets > Outside your budgets |
+| Budgets | Period chips; income dialog; spending suggestions and apply; add/edit/delete budget; category creation; per-category transaction sheet; debit/credit/net and remaining; Outside Budgets | Budgets bottom tab |
+| Outside Budgets | Selected period/all-time selector; search; signed transaction amounts; category assignment sheet; category management; details; return refresh | Budgets > Outside your budgets |
 | EMI Tracker | Existing recurring-payment summary, empty state and EMI cards/details | Plan > EMI Tracker |
 | Categories | Add/edit sheet; name, emoji, color; create/save/cancel; delete confirmation; keyboard-safe scrolling | Plan > Categories, plus all existing category-management entry points |
 | Transaction Window Category | Date range vs boundary-transaction modes; date picker; boundary search; preview; category setup; tag entry; apply confirmation; cancel/save | Activity > Activity tools > Categorize a date or transaction window (original toolbar action retained in standalone All Transactions routes) |
@@ -58,7 +58,7 @@ Audit baseline: local commit `3ce0c0f` (net-budget calculation update), followin
 
 ## Navigation and lifecycle contracts
 
-- Exactly four primary destinations: Home, Activity, Insights and Plan. The shell retains visited tabs with IndexedStack and uses the existing root Navigator for detail screens. There are no additional Providers or nested Navigators.
+- Exactly five primary destinations: Home, Activity, Budgets, Insights and Plan. Budgets has moved out of Plan into its own retained tab. The shell retains visited tabs with IndexedStack and uses the existing root Navigator for detail screens. There are no additional Providers or nested Navigators.
 - Home remains the sole owner of startup onboarding, SMS permission/scan and newly-found review. Tab selection never invokes a scan. Home direction, sender and scroll state survive switching.
 - Activity retains the existing AllTransactionsScreen state. Home See All requests the selected direction on that same Activity instance. Search, filters, sorting and selection are retained on normal tab switches.
 - Salary Cycles and Review Inbox retain reloadFromCache on return. Settings retains loadTransactions on return. Existing screen-local update and restore callbacks stay in their original widgets.
@@ -431,13 +431,19 @@ Baseline controls indexed: **352**.
 ## Implemented files and rationale
 
 - `lib/main.dart`: use MainShellScreen as the app entry; keep the original Provider and Material 3 light/dark themes.
-- `lib/screens/main_shell_screen.dart`: four retained primary destinations, root Navigator routes, explicit existing return-refresh callbacks, Activity tool menu and Android Back handling.
+- `lib/screens/main_shell_screen.dart`: five retained primary destinations, root Navigator routes, explicit existing return-refresh callbacks, Activity tool menu and Android Back handling.
 - `lib/widgets/navigation_hub.dart`: shared, responsive navigation cards for Insights and Plan; every row opens an existing screen.
 - `lib/screens/home_screen.dart`: real summary first; remove the mapped shortcut grid; retain current-cycle filtering, details, swipes, startup and permission flows; read actual alert/review counts after scans and route returns.
 - `lib/screens/all_transactions_screen.dart`: embed the existing Activity screen, preserve filters and scroll/selection state, handle See All direction requests, refresh salary-cycle choices with reads, and route Back safely when tabs are retained. All original totals and transaction operations remain.
+- `lib/screens/spending_heatmap_screen.dart`: Activity-style filters, exact filtered calendar/day/month amounts, optional incoming/activity views and internal transfers, retained filter choices across months, responsive scrolling and accessible calendar labels.
+- `lib/utils/transaction_filters.dart`: share the existing Activity matching predicate with the heatmap; Activity classification and totals remain unchanged.
+- `test/heatmap_filters_test.dart`: filter combinations, search, chart intensity, exact daily/month statistics, directions and transfers, cycle/month boundaries, tracking start, refresh, data integrity, dark mode, text scale and keyboard.
+- `lib/screens/budget_screen.dart`: use the existing budget screen as a retained primary tab, preserve the selected period and scroll, reload current income/categories/salary-period choices on return, and expose Settings. All budget calculations and existing workflows remain.
 - `lib/screens/settings_screen.dart`: add Tracking Settings, keeping every existing Settings entry and handler.
 - `lib/widgets/summary_card.dart`: display the existing cycle title and adapt the existing totals layout to narrow screens and larger text; no formula/format changes.
 - `lib/widgets/tracking_onboarding_sheet.dart`: wrap preset chips and allow sheet scrolling to fix the overflow exposed by navigation tests; choices and persistence are unchanged.
+- `lib/screens/transaction_review_screen.dart`: top Ignore all action reuses the existing per-message ignore operation; pending items are retained on write failure, conflicting actions are disabled while saving, and messages remain restorable in Message Decisions.
+- `test/review_ignore_all_test.dart`: offscreen bulk ignore, unchanged transaction/other stored data, restore, partial-write failure/retry, empty state and small-screen accessibility.
 - `test/navigation_shell_test.dart`: focused coverage of navigation, state, return callbacks and responsive layout using the production SQLite schema and real service summary getters. Only the SMS/platform scanning boundary is replaced by a counting test service.
 - `NAVIGATION_INVENTORY.md`: baseline action mapping, contextual-control index, lifecycle contracts and final verification record.
 
@@ -445,9 +451,19 @@ Baseline controls indexed: **352**.
 
 - Home: app title/Scan/actual Alerts badge/Settings, current salary-cycle summary, optional actual review/alert shortcuts, original direction and bank filters, recent transactions and See All.
 - Activity: original transaction search, filters, selection, totals and list; Activity tools, sorting and Settings in the toolbar.
+- Budgets: existing Smart Budgets screen with income, period selection, category budgets, suggestions, Add Budget and Outside Budgets; Settings in the toolbar.
 - Insights: Spending Breakdown, Category Breakdown, Spending Heatmap and Merchant Rankings.
-- Plan: Accounts and income (Accounts, Salary Cycles); Budgets and commitments (Budgets, EMI Tracker); Organization (Categories).
+- Plan: Accounts and income (Accounts, Salary Cycles); Commitments (EMI Tracker); Organization (Categories).
 - Settings and existing feature detail routes keep their original full content and Back behavior. Salary closeout, Outside Budgets, transaction windows, transfer merge/unmerge, category assignment and backup tools remain within their existing workflows.
+
+## Heatmap filter behavior
+
+- Default is Money Out with internal transfers excluded, preserving the original expense-only calendar.
+- All, Money In and Money Out use Activity's direction, search, sender, category, tag and salary-cycle matching predicate. Choices within a chip group are combined with OR; groups are combined with AND. Uncategorized is a selectable category.
+- Money In shows credit amounts; All shows credit plus debit activity. Including internal transfers displays their matching debit/credit entries as activity; a complete pair contributes both amounts in All mode. This is a gross-activity view.
+- Salary-cycle boundaries use the existing inclusive start and exclusive end, intersected with the displayed calendar month. Month changes keep the current filter choices; Reset clears filters back to the default spending view while keeping the displayed month.
+- Daily color intensity, monthly total, average per active day, peak and active-day count all come from the same matching transactions used by the selected-day sheet. Paise are retained. Ignored and untracked transactions remain excluded.
+- Refresh reloads current stored transactions, category names and cycle options while retaining valid filters. All filter and month changes are read-only.
 
 ## Verification
 
@@ -456,15 +472,16 @@ Validated against the final application source:
 | Check | Result |
 |---|---|
 | `flutter analyze --no-pub` | Passed, no issues |
-| `flutter test --no-pub` | Passed, 101 tests (87 existing plus 14 navigation tests) |
-| `flutter build apk --debug --no-pub` | Passed; `build/app/outputs/flutter-apk/app-debug.apk` |
+| `flutter test --no-pub` | Passed, 114 tests (87 existing, 17 navigation, 3 bulk-ignore and 7 heatmap-filter tests) |
+| Original four-tab refactor: `flutter build apk --debug --no-pub` | Passed; debug artifact predates the five-tab follow-up |
+| Five-tab, bulk-ignore and heatmap-filter follow-ups: `flutter build apk --release --no-pub` | Passed; `build/app/outputs/flutter-apk/app-release.apk` (54.3 MB), using the existing signing configuration |
 | `git diff --check` | Passed |
-| SHA-256 comparison of all pre-existing Dart files | Only the six existing UI/entry files listed above changed; every other existing Dart file is byte-for-byte unchanged |
+| SHA-256 comparison of all pre-existing Dart files | The original refactor changed six existing UI/entry files. The five-tab follow-up additionally adapts BudgetScreen; services, storage, models and accounting/classification remain unchanged; Activity matching is extracted into a shared pure helper |
 
-Navigation coverage includes all four tabs; all nine Insights/Plan destinations and salary closeout; all seven Activity tools; Settings from every tab, Tracking Settings and Merchant Rules; actual alert/review counts and pull-to-refresh; startup onboarding and new-transaction review; salary/review/settings return callbacks; repeated See All direction requests; retained Home filters, Activity filters/search/scroll/selection; Android Back including hidden-tab selection; loading/permission-error/retry; 320-pixel dark layouts with 1.6 text scale; and keyboard insets. A database snapshot confirms that switching tabs causes no storage mutations or scans.
+Navigation coverage includes all five tabs; all eight Insights/Plan destinations, the Budgets primary tab and salary closeout; all seven Activity tools; Settings from every tab, Tracking Settings and Merchant Rules; actual alert/review counts, bulk-ignore return refresh and pull-to-refresh; startup onboarding and new-transaction review; salary/review/settings return callbacks; repeated See All direction requests; retained Home filters, Activity filters/search/scroll/selection, Budget period/scroll and its Outside Budgets return route; Android Back including hidden-tab selection; loading/permission-error/retry; 320-pixel dark layouts with 1.6 text scale; and keyboard insets. A database snapshot confirms that switching tabs causes no storage mutations or scans.
 
-All 12 former Home grid destinations, toolbar actions, Settings entries and the indexed contextual controls remain reachable. No dependencies, database/schema, services, storage, models, parser, SMS permission, backup implementation or financial calculations changed. Temporary screenshot tooling was removed from the repository changes. No commit or push was made.
+All 12 former Home grid destinations, toolbar actions, Settings entries and the indexed contextual controls remain reachable. No dependencies, database/schema, services, storage, models, parser, SMS permission or backup implementation changed. Existing accounting and classification remain unchanged; the heatmap now offers explicit incoming and gross-activity views in addition to its original spending default. Temporary screenshot tooling was removed from the repository changes. No commit or push was made.
 
 ### Practical validation limits
 
-Widget tests replace the Android SMS/platform scanning boundary with a counting service; real summaries and the production SQLite schema are used. The debug APK was built successfully, but this task did not install/run it on a physical phone. Device-only permission prompts, SMS scanning and system backup/file-sharing integrations were not exercised on hardware. Their implementations are unchanged. No known incomplete implementation remains within this UI/navigation scope.
+Widget tests replace the Android SMS/platform scanning boundary with a counting service; real summaries and the production SQLite schema are used. APK builds were verified as recorded above; this task did not install/run the app on a physical phone. Device-only permission prompts, SMS scanning and system backup/file-sharing integrations were not exercised on hardware. Their implementations are unchanged. No known incomplete implementation remains within this UI/navigation scope.

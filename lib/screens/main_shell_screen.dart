@@ -155,7 +155,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
 
   Widget _plan() => NavigationHub(
     title: 'Plan',
-    description: 'Manage your accounts, budgets and commitments.',
+    description: 'Manage your accounts, income and commitments.',
     onOpenSettings: _settings,
     sections: [
       HubSection('Accounts and income', [
@@ -175,14 +175,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
               _open(const SalaryCycleScreen(), refresh: _ReturnRefresh.cache),
         ),
       ]),
-      HubSection('Budgets and commitments', [
-        HubLink(
-          id: 'budgets',
-          title: 'Budgets',
-          subtitle: 'Track category budgets and net spending.',
-          icon: Icons.savings_outlined,
-          onTap: () => _open(const BudgetScreen()),
-        ),
+      HubSection('Commitments', [
         HubLink(
           id: 'emis',
           title: 'EMI Tracker',
@@ -228,7 +221,13 @@ class _MainShellScreenState extends State<MainShellScreen> {
           icon: const Icon(Icons.settings_outlined),
         ),
       ),
-      2 => _insights(),
+      2 => BudgetScreen(
+        key: const ValueKey('budgets-tab'),
+        isActive: _index == 2,
+        refreshToken: _homeRefreshToken,
+        onOpenSettings: _settings,
+      ),
+      3 => _insights(),
       _ => _plan(),
     };
   }
@@ -238,7 +237,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     return PopScope(
       canPop: _index == 0 || _index == 1,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && (_index == 2 || _index == 3)) _select(0);
+        if (!didPop && _index >= 2) _select(0);
       },
       child: Scaffold(
         // Feature Scaffolds handle keyboard insets once, within the shell.
@@ -246,7 +245,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
         body: IndexedStack(
           index: _index,
           children: [
-            for (var i = 0; i < 4; i++)
+            for (var i = 0; i < 5; i++)
               TickerMode(enabled: _index == i, child: _page(i)),
           ],
         ),
@@ -267,6 +266,12 @@ class _MainShellScreenState extends State<MainShellScreen> {
                     icon: Icon(Icons.receipt_long_outlined),
                     selectedIcon: Icon(Icons.receipt_long),
                     label: 'Activity',
+                  ),
+                  NavigationDestination(
+                    key: ValueKey('tab-budgets'),
+                    icon: Icon(Icons.savings_outlined),
+                    selectedIcon: Icon(Icons.savings),
+                    label: 'Budgets',
                   ),
                   NavigationDestination(
                     key: ValueKey('tab-insights'),

@@ -26,6 +26,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
   List<AppCategory> _categories = const [];
   final Set<String> _savingReviewIds = {};
   bool _isLoading = true;
+  bool _isIgnoringAll = false;
   String? _error;
 
   @override
@@ -35,6 +36,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
   }
 
   Future<void> _load() async {
+    if (_isIgnoringAll) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -115,6 +117,41 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
     } finally {
       _setSaving(review.id, false);
     }
+  }
+
+  Future<void> _ignoreAll() async {
+    if (_isLoading ||
+        _isIgnoringAll ||
+        _savingReviewIds.isNotEmpty ||
+        _error != null ||
+        _reviews.isEmpty) {
+      return;
+    }
+
+    final reviews = List<TransactionReview>.of(_reviews);
+    final ignoredIds = <String>{};
+    setState(() => _isIgnoringAll = true);
+    for (final review in reviews) {
+      try {
+        await LocalStorageService.ignoreTransactionReview(review.id);
+        ignoredIds.add(review.id);
+      } catch (_) {
+        // Keep failed items in the inbox so they can be retried.
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _reviews = _reviews
+          .where((item) => !ignoredIds.contains(item.id))
+          .toList();
+      _isIgnoringAll = false;
+    });
+    final message = ignoredIds.length == reviews.length
+        ? '${ignoredIds.length} ${ignoredIds.length == 1 ? 'message' : 'messages'} ignored. Restore from Message Decisions.'
+        : 'Ignored ${ignoredIds.length} of ${reviews.length} messages. Try again for the remaining messages.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _chooseCategory(TransactionReview review) async {
@@ -320,45 +357,73 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Review Inbox'),
-        actions: [
-          IconButton(
-            onPressed: _isLoading ? null : _load,
-            icon: const Icon(Icons.refresh),
+    return PopScope(
+      canPop: !_isIgnoringAll,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Review Inbox',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _reviews.isEmpty
-          ? const _EmptyReviewInbox()
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                itemCount: _reviews.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final review = _reviews[index];
-                  return _ReviewCard(
-                    review: review,
-                    category: _categories
-                        .where((c) => c.id == review.categoryId)
-                        .firstOrNull,
-                    isSaving: _savingReviewIds.contains(review.id),
-                    onIgnore: () => _ignore(review),
-                    onDebit: () => _resolve(review, TransactionType.debit),
-                    onCredit: () => _resolve(review, TransactionType.credit),
-                    onCategory: () => _chooseCategory(review),
-                    onSaveMerchantRule: () => _saveMerchantRule(review),
-                  );
-                },
-              ),
+          actions: [
+            TextButton(
+              key: const ValueKey('ignore-all-reviews'),
+              onPressed:
+                  _isLoading ||
+                      _isIgnoringAll ||
+                      _savingReviewIds.isNotEmpty ||
+                      _error != null ||
+                      _reviews.isEmpty
+                  ? null
+                  : _ignoreAll,
+              child: Text(_isIgnoringAll ? 'Ignoring...' : 'Ignore all'),
             ),
+            IconButton(
+              tooltip: 'Refresh inbox',
+              onPressed: _isLoading || _isIgnoringAll ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+          bottom: _isIgnoringAll
+              ? const PreferredSize(
+                  preferredSize: Size.fromHeight(2),
+                  child: LinearProgressIndicator(minHeight: 2),
+                )
+              : null,
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? Center(child: Text(_error!))
+            : _reviews.isEmpty
+            ? const _EmptyReviewInbox()
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                  itemCount: _reviews.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final review = _reviews[index];
+                    return _ReviewCard(
+                      review: review,
+                      category: _categories
+                          .where((c) => c.id == review.categoryId)
+                          .firstOrNull,
+                      isSaving:
+                          _isIgnoringAll ||
+                          _savingReviewIds.contains(review.id),
+                      onIgnore: () => _ignore(review),
+                      onDebit: () => _resolve(review, TransactionType.debit),
+                      onCredit: () => _resolve(review, TransactionType.credit),
+                      onCategory: () => _chooseCategory(review),
+                      onSaveMerchantRule: () => _saveMerchantRule(review),
+                    );
+                  },
+                ),
+              ),
+      ),
     );
   }
 }

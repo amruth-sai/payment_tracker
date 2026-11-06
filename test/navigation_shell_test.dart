@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide Transaction;
 import 'package:payment_tracker/main.dart';
 import 'package:payment_tracker/models/app_alert.dart';
 import 'package:payment_tracker/models/app_category.dart';
+import 'package:payment_tracker/models/budget.dart';
 import 'package:payment_tracker/models/transaction.dart';
 import 'package:payment_tracker/models/transaction_review.dart';
 import 'package:payment_tracker/screens/accounts_screen.dart';
@@ -21,6 +22,7 @@ import 'package:payment_tracker/screens/import_message_screen.dart';
 import 'package:payment_tracker/screens/main_shell_screen.dart';
 import 'package:payment_tracker/screens/merchant_rankings_screen.dart';
 import 'package:payment_tracker/screens/merchant_rules_screen.dart';
+import 'package:payment_tracker/screens/outside_budget_transactions_screen.dart';
 import 'package:payment_tracker/screens/salary_cycle_screen.dart';
 import 'package:payment_tracker/screens/salary_month_closeout_screen.dart';
 import 'package:payment_tracker/screens/settings_screen.dart';
@@ -177,7 +179,7 @@ void main() {
   }
 
   testWidgets(
-    'application entry has four tabs, real summary first and one service startup',
+    'application entry has five tabs, real summary first and one service startup',
     (tester) async {
       tester.view.physicalSize = const Size(480, 1000);
       tester.view.devicePixelRatio = 1;
@@ -193,9 +195,17 @@ void main() {
       expect(find.byType(MainShellScreen), findsOneWidget);
       expect(
         tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations,
-        hasLength(4),
+        hasLength(5),
       );
-      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
+      expect(
+        tester
+            .widgetList<NavigationDestination>(
+              find.byType(NavigationDestination),
+            )
+            .map((destination) => destination.label),
+        ['Home', 'Activity', 'Budgets', 'Insights', 'Plan'],
+      );
       final summary = tester.widget<SummaryCard>(find.byType(SummaryCard));
       expect(summary.totalIn, sms.currentCycleCredits);
       expect(summary.totalOut, sms.currentCycleDebits);
@@ -227,6 +237,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Coffee');
       await tester.tap(find.byKey(const ValueKey('banks-BANK_A')));
       await settle(tester);
+      await tab(tester, 'budgets');
       await tab(tester, 'insights');
       await tab(tester, 'plan');
       await tab(tester, 'home');
@@ -291,6 +302,134 @@ void main() {
   );
 
   testWidgets(
+    'Budgets tab retains period and scroll, opens Outside Budgets and returns Home on Back',
+    (tester) async {
+      final now = DateTime.now();
+      await tester.runAsync(() async {
+        await LocalStorageService.saveTransaction(
+          Transaction(
+            id: 'older-payment',
+            amount: 20,
+            type: TransactionType.debit,
+            source: PaymentSource.bank,
+            sender: 'BANK_A',
+            date: DateTime(now.year, now.month - 1, 10),
+            rawMessage: 'older payment',
+          ),
+        );
+        for (var i = 0; i < 10; i++) {
+          final category = AppCategory(
+            id: 'budget-category-$i',
+            name: 'Budget category $i',
+            emoji: 'B',
+            colorValue: 0xff123456,
+            createdAt: now,
+          );
+          await LocalStorageService.saveCategory(category);
+          await LocalStorageService.saveBudget(
+            Budget(
+              id: 'budget-$i',
+              categoryId: category.id,
+              monthlyLimit: 1000,
+            ),
+          );
+        }
+      });
+      await open(tester);
+      await tab(tester, 'budgets');
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        2,
+      );
+      expect(find.text('Add Budget'), findsOneWidget);
+      expect(find.byTooltip('Spending Suggestions'), findsOneWidget);
+      final budgetState = tester.state(find.byType(BudgetScreen));
+      final previousPeriod = find.byType(FilterChip).last;
+      final label =
+          (tester.widget<FilterChip>(previousPeriod).label as Text).data!;
+      await tester.tap(previousPeriod);
+      await settle(tester);
+      final budgetList = find.byKey(const PageStorageKey('budgets-scroll'));
+      final scrollable = find
+          .descendant(of: budgetList, matching: find.byType(Scrollable))
+          .first;
+      final outside = find.text('View and categorize transactions');
+      await tester.scrollUntilVisible(outside, 400, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      final position = tester
+          .state<ScrollableState>(scrollable)
+          .position
+          .pixels;
+      expect(position, greaterThan(0));
+      final before = await tester.runAsync(LocalStorageService.createBackup);
+      await tab(tester, 'home');
+      await tab(tester, 'budgets');
+      expect(tester.state(find.byType(BudgetScreen)), same(budgetState));
+      expect(
+        tester.state<ScrollableState>(scrollable).position.pixels,
+        closeTo(position, 1),
+      );
+      await tester.tap(outside);
+      await settle(tester);
+      expect(
+        tester
+            .widget<OutsideBudgetTransactionsScreen>(
+              find.byType(OutsideBudgetTransactionsScreen),
+            )
+            .periodLabel,
+        label,
+      );
+      expect(find.byType(NavigationBar), findsNothing);
+      await back(tester);
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        2,
+      );
+      expect(tester.state(find.byType(BudgetScreen)), same(budgetState));
+      final after = await tester.runAsync(LocalStorageService.createBackup);
+      expect(after!.tables, before!.tables);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        0,
+      );
+      await tab(tester, 'plan');
+      expect(find.byKey(const ValueKey('destination-budgets')), findsNothing);
+      expect(sms.scans, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Budgets tab picks up income and salary-period changes made from other tabs',
+    (tester) async {
+      await open(tester, size: const Size(600, 1400));
+      await tab(tester, 'budgets');
+      expect(find.text('Tap to set income'), findsOneWidget);
+      await tab(tester, 'plan');
+      await tester.tap(find.byKey(const ValueKey('destination-salary')));
+      await settle(tester);
+      await tester.runAsync(() async {
+        await LocalStorageService.setSetting('monthly_income', '5000');
+        await LocalStorageService.markAsSalary('tx-2', true);
+      });
+      await back(tester);
+      await tab(tester, 'budgets');
+      expect(find.text('\u20b95,000'), findsOneWidget);
+      await tester.tap(find.text('View and categorize transactions'));
+      await settle(tester);
+      final outside = tester.widget<OutsideBudgetTransactionsScreen>(
+        find.byType(OutsideBudgetTransactionsScreen),
+      );
+      expect(outside.periodStart, sms.currentCycle!.startDate);
+      expect(outside.periodLabel, sms.currentCycle!.cycleLabel);
+      expect(sms.scans, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'every Insights and Plan destination opens its existing screen and returns',
     (tester) async {
       await open(tester, size: const Size(600, 1400));
@@ -306,14 +445,12 @@ void main() {
         'merchants': MerchantRankingsScreen,
         'accounts': AccountsScreen,
         'salary': SalaryCycleScreen,
-        'budgets': BudgetScreen,
         'emis': EMITrackerScreen,
         'categories': CategoriesScreen,
       }.entries) {
         final plan = [
           'accounts',
           'salary',
-          'budgets',
           'emis',
           'categories',
         ].contains(entry.key);
@@ -339,7 +476,7 @@ void main() {
           tester
               .widget<NavigationBar>(find.byType(NavigationBar))
               .selectedIndex,
-          plan ? 3 : 2,
+          plan ? 4 : 3,
         );
       }
       expect(sms.scans, 1);
@@ -386,7 +523,7 @@ void main() {
     'Settings remains reachable on every tab and preserves scan-on-return callback',
     (tester) async {
       await open(tester);
-      for (final name in ['home', 'activity', 'insights', 'plan']) {
+      for (final name in ['home', 'activity', 'budgets', 'insights', 'plan']) {
         await tab(tester, name);
         final scans = sms.scans;
         await tester.tap(find.byTooltip('Settings'));
@@ -503,6 +640,39 @@ void main() {
   );
 
   testWidgets(
+    'ignoring all reviews clears the Home review shortcut on return',
+    (tester) async {
+      await tester.runAsync(
+        () => LocalStorageService.saveTransactionReviews([
+          for (var i = 0; i < 2; i++)
+            TransactionReview(
+              id: 'bulk-review-$i',
+              amount: 50,
+              source: PaymentSource.bank,
+              sender: 'BANK_A',
+              date: DateTime.now(),
+              rawMessage: 'Payment needing review',
+              createdAt: DateTime.now(),
+            ),
+        ]),
+      );
+      await open(tester);
+      await tester.tap(find.text('2 transactions need review'));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('ignore-all-reviews')));
+      await settle(tester);
+      expect(find.text('Nothing needs review'), findsOneWidget);
+      final reloads = sms.cacheReloads;
+      await back(tester);
+      expect(find.text('2 transactions need review'), findsNothing);
+      expect(sms.cacheReloads, reloads + 1);
+      expect(sms.transactions, hasLength(3));
+      expect(sms.scans, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Android Back exits selection first, returns tabs Home, and ignores hidden Activity selection',
     (tester) async {
       await open(tester, size: const Size(600, 1400));
@@ -578,7 +748,14 @@ void main() {
         textScale: 1.6,
         dark: true,
       );
-      for (final name in ['home', 'insights', 'plan', 'activity', 'home']) {
+      for (final name in [
+        'home',
+        'budgets',
+        'insights',
+        'plan',
+        'activity',
+        'home',
+      ]) {
         await tab(tester, name);
         expect(find.byType(NavigationBar), findsOneWidget);
         expect(tester.takeException(), isNull, reason: name);
@@ -701,7 +878,7 @@ void main() {
   );
 
   testWidgets(
-    'keyboard in Activity is handled once and dismissing it restores all four destinations',
+    'keyboard in Activity is handled once and dismissing it restores all five destinations',
     (tester) async {
       await open(tester, size: const Size(390, 844));
       await tab(tester, 'activity');
@@ -712,7 +889,7 @@ void main() {
       expect(tester.takeException(), isNull);
       tester.view.resetViewInsets();
       await tester.pumpAndSettle();
-      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
       expect(tester.takeException(), isNull);
     },
   );

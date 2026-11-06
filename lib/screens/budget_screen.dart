@@ -17,7 +17,16 @@ import 'categories_screen.dart';
 import '../utils/format_utils.dart';
 
 class BudgetScreen extends StatefulWidget {
-  const BudgetScreen({super.key});
+  const BudgetScreen({
+    super.key,
+    this.isActive = true,
+    this.refreshToken = 0,
+    this.onOpenSettings,
+  });
+
+  final bool isActive;
+  final int refreshToken;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<BudgetScreen> createState() => _BudgetScreenState();
@@ -39,6 +48,17 @@ class _BudgetScreenState extends State<BudgetScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant BudgetScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((!oldWidget.isActive && widget.isActive) ||
+        oldWidget.refreshToken != widget.refreshToken) {
+      // Retained tabs must pick up category, income and salary-period edits.
+      // _loadPeriods preserves the selected period while it still exists.
+      _loadData();
+    }
   }
 
   @override
@@ -144,6 +164,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
             tooltip: 'Spending Suggestions',
             onPressed: _showSuggestions,
           ),
+          if (widget.onOpenSettings != null)
+            IconButton(
+              tooltip: 'Settings',
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: widget.onOpenSettings,
+            ),
         ],
       ),
       body: _isLoading
@@ -151,6 +177,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
           : RefreshIndicator(
               onRefresh: _loadData,
               child: ListView(
+                key: const PageStorageKey('budgets-scroll'),
+                primary: false,
                 padding: const EdgeInsets.only(bottom: 80),
                 children: [
                   _buildIncomeCard(),

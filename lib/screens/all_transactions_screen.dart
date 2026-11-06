@@ -13,6 +13,7 @@ import '../widgets/transaction_detail_sheet.dart';
 import '../utils/date_utils.dart';
 import '../utils/format_utils.dart';
 import '../utils/money.dart';
+import '../utils/transaction_filters.dart';
 import 'transaction_window_category_screen.dart';
 import 'categories_screen.dart';
 
@@ -315,29 +316,15 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen>
     bool includeTags = true,
   }) {
     final cycle = _cycles.where((cycle) => cycle.id == _cycleId).firstOrNull;
-    return all.where((tx) {
-      if (direction == 1 && !tx.isCredit || direction == 2 && !tx.isDebit) {
-        return false;
-      }
-      if (includeSenders &&
-          _senders.isNotEmpty &&
-          !_senders.contains(tx.sender)) {
-        return false;
-      }
-      if (includeCategories &&
-          _categories.isNotEmpty &&
-          !_categories.contains(tx.categoryId ?? '')) {
-        return false;
-      }
-      if (includeTags && _tags.isNotEmpty && !_tags.contains(tx.tag)) {
-        return false;
-      }
-      if (cycle != null && !cycle.contains(tx.date)) return false;
-      final text =
-          '${tx.displayName} ${tx.sender} ${tx.note ?? ''} ${tx.tag ?? ''} ${tx.amount} ${tx.referenceId ?? ''}'
-              .toLowerCase();
-      return text.contains(_search);
-    }).toList();
+    return filterTransactions(
+      all,
+      direction: direction,
+      senders: includeSenders ? _senders : const {},
+      categories: includeCategories ? _categories : const {},
+      tags: includeTags ? _tags : const {},
+      cycle: cycle,
+      search: _search,
+    );
   }
 
   List<String> _options(
